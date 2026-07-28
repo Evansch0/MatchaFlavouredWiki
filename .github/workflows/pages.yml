@@ -1,0 +1,119 @@
+name: Publish Matcha Wiki
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6,18 * * *"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Check out the wiki
+        uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Check whether publishing is needed
+        id: gate
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "schedule" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          node scripts/update-matcha.mjs --check --quiet --check-exit-code
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 0 ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$status" -eq 10 ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$status"
+          fi
+
+      - name: Install build dependencies
+        if: steps.gate.outputs.publish == 'true'
+        run: npm ci
+
+      - name: Refresh from Modrinth
+        if: >-
+          steps.gate.outputs.publish == 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        run: npm run update
+
+      - name: Verify protected recipes
+        if: steps.gate.outputs.publish == 'true'
+        run: |
+          node -e "
+            const data = require('./app/data/wiki-data.json');
+            const leaks = data.recipes.filter(
+              (recipe) =>
+                recipe.secret &&
+                (recipe.ingredients.length ||
+                  recipe.grid.length ||
+                  recipe.ingredientKeys.length)
+            );
+            if (leaks.length) {
+              throw new Error('A protected recipe contains publishable details.');
+            }
+          "
+
+      - name: Save synchronized data
+        if: >-
+          steps.gate.outputs.publish == 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/data public
+          if ! git diff --cached --quiet; then
+            git commit -m "Update wiki from Modrinth"
+            git push
+          fi
+
+      - name: Build the static site
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          BASE_PATH: /MatchaFlavouredWiki/
+        run: npm run build
+
+      - name: Configure GitHub Pages
+        if: steps.gate.outputs.publish == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload the site
+        if: steps.gate.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish GitHub Pages
+        if: steps.gate.outputs.publish == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4

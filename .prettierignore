@@ -1,0 +1,10 @@
+node_modules/
+dist/
+public/
+app/data/
+.matcha-cache/
+.vinext/
+.vite/
+.openai/
+.codex/
+.agents/
