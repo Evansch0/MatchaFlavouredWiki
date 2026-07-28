@@ -1,6 +1,6 @@
 # Matcha Flavoured Field Wiki
+Made by the community for the community <3
 
-A playful, texture-accurate companion wiki for
 [Matcha Flavoured](https://modrinth.com/datapack/matcha-flavoured).
 
 **Live site:** <https://evansch0.github.io/MatchaFlavouredWiki/>
