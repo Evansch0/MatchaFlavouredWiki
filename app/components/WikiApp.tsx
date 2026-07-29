@@ -79,6 +79,30 @@ type ChangelogEntry = {
   }[];
 };
 
+type LocationRecord = {
+  id: string;
+  group: string;
+  name: string;
+  kicker: string;
+  summary: string;
+  metric: string;
+  findings: string[];
+  markerKey: string;
+  itemKeys: string[];
+  sourceCount: number;
+  tone:
+    | "sage"
+    | "water"
+    | "frost"
+    | "parchment"
+    | "copper"
+    | "stone"
+    | "deep"
+    | "sand"
+    | "nether"
+    | "end";
+};
+
 type WikiData = {
   release: {
     version: string;
@@ -98,6 +122,7 @@ type WikiData = {
     craftingCount: number;
     itemCount: number;
     advancementCount: number;
+    locationCount: number;
     textureCount: number;
     reviewPendingRecipeCount?: number;
   };
@@ -111,6 +136,7 @@ type WikiData = {
   recipes: Recipe[];
   advancements: Advancement[];
   fish: FishEntry[];
+  locations: LocationRecord[];
 };
 
 const wikiData = wikiDataJson as unknown as WikiData;
@@ -135,6 +161,7 @@ const navItems = [
   { route: "recipes", label: "Recipe Book", icon: "▦" },
   { route: "items", label: "Item Pantry", icon: "◇" },
   { route: "progression", label: "Progression", icon: "✦" },
+  { route: "places", label: "Places", icon: "⌖" },
   { route: "guides", label: "Field Guides", icon: "☘" },
   { route: "changelog", label: "Changelog", icon: "✎" },
 ];
@@ -733,7 +760,8 @@ function HomePage({
           </h1>
           <p className="hero-lede">
             A friendly guide to Matcha Flavoured&apos;s foods, alloys,
-            blessings, equipment, and delightfully strange progression.
+            blessings, equipment, changed places, and delightfully strange
+            progression.
           </p>
           <div className="hero-actions">
             <button
@@ -867,6 +895,11 @@ function HomePage({
             <span className="portal-glyph">✦</span>
             <strong>Progression</strong>
             <small>A spoiler-light route through the pack</small>
+          </button>
+          <button className="portal-card places" onClick={() => go("places")}>
+            <span className="portal-glyph">⌖</span>
+            <strong>Places</strong>
+            <small>What changes when a journey reaches its destination</small>
           </button>
           <button className="portal-card guides" onClick={() => go("guides")}>
             <span className="portal-glyph">☘</span>
@@ -1451,7 +1484,7 @@ function ProgressionPage({ openItem }: { openItem: (item: Item) => void }) {
           <h2>Slow is a valid speed.</h2>
           <p>
             The early game is deliberately firmer than vanilla. The pack expects
-            observation, cooking, and small upgrades—not a sprint for diamonds.
+            observation, cooking, and small upgrades, not a sprint for diamonds.
           </p>
         </div>
         <div className="milestone-path">
@@ -1634,6 +1667,150 @@ function ChangelogPage() {
           </details>
         ))}
       </section>
+    </div>
+  );
+}
+
+function PlacesPage({ openItem }: { openItem: (item: Item) => void }) {
+  const groups = [...new Set(wikiData.locations.map((place) => place.group))];
+  const jumpToGroup = (group: string) => {
+    document
+      .getElementById(`place-group-${group.toLowerCase().replaceAll(" ", "-")}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <div className="page places-page">
+      <header className="places-hero">
+        <div>
+          <p>FIELD MAP · RELEASE {wikiData.release.version}</p>
+          <h1>What changes when you get there</h1>
+          <span>
+            Things you can see, time, survive, catch, trade for, or carry home
+          </span>
+        </div>
+        <div className="places-compass" aria-hidden="true">
+          <span>⌖</span>
+          <small>N</small>
+        </div>
+      </header>
+
+      <aside className="places-scope-note">
+        <span aria-hidden="true">✎</span>
+        <div>
+          <strong>No registry soup. Just things a player can notice.</strong>
+          <p>
+            Measurements use hearts, seconds, blocks, species, trades, and named
+            finds. Vanilla details stay off the page unless Matcha changes what
+            actually happens there. Secrets stay secret; higher-tier fish keep
+            their enchanting-table names.
+          </p>
+        </div>
+      </aside>
+
+      <nav className="places-index" aria-label="Place group index">
+        {groups.map((group) => {
+          const count = wikiData.locations.filter(
+            (place) => place.group === group,
+          ).length;
+          return (
+            <button
+              key={group}
+              type="button"
+              onClick={() => jumpToGroup(group)}
+            >
+              <span>{String(count).padStart(2, "0")}</span>
+              <strong>{group}</strong>
+              <small>{count === 1 ? "entry" : "entries"}</small>
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="place-groups">
+        {groups.map((group, groupIndex) => {
+          const entries = wikiData.locations.filter(
+            (place) => place.group === group,
+          );
+          return (
+            <section
+              className="place-group"
+              id={`place-group-${group.toLowerCase().replaceAll(" ", "-")}`}
+              key={group}
+            >
+              <header>
+                <span>{String(groupIndex + 1).padStart(2, "0")}</span>
+                <div>
+                  <p>MAP PAGE</p>
+                  <h2>{group}</h2>
+                </div>
+                <small>
+                  {entries.length} {entries.length === 1 ? "report" : "reports"}
+                </small>
+              </header>
+
+              <div className="place-card-grid">
+                {entries.map((place) => {
+                  const marker = itemByKey(place.markerKey);
+                  const specimens = place.itemKeys
+                    .map(itemByKey)
+                    .filter(Boolean) as Item[];
+                  return (
+                    <article
+                      className={`place-card place-tone-${place.tone}`}
+                      key={place.id}
+                    >
+                      <header>
+                        <button
+                          type="button"
+                          className="place-marker"
+                          onClick={() => marker && openItem(marker)}
+                          disabled={!marker}
+                          aria-label={
+                            marker ? `Open ${marker.name}` : undefined
+                          }
+                        >
+                          <ItemSprite item={marker} size="lg" />
+                        </button>
+                        <div>
+                          <p>{place.kicker}</p>
+                          <h3>{place.name}</h3>
+                          <span>{place.metric}</span>
+                        </div>
+                      </header>
+
+                      <p className="place-summary">{place.summary}</p>
+                      <ul className="place-findings">
+                        {place.findings.map((finding) => (
+                          <li key={finding}>{finding}</li>
+                        ))}
+                      </ul>
+
+                      {specimens.length > 0 && (
+                        <footer>
+                          <span>Worth recognising</span>
+                          <div>
+                            {specimens.map((item) => (
+                              <button
+                                key={item.key}
+                                type="button"
+                                onClick={() => openItem(item)}
+                              >
+                                <ItemSprite item={item} size="md" />
+                                <span>{item.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </footer>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1996,6 +2173,13 @@ function FieldGuidesPage({
             without villager torture chambers or technical mob farms. Its
             economy assumes a slower relationship with the world.
           </div>
+          <button
+            className="field-action"
+            type="button"
+            onClick={() => go("places")}
+          >
+            Read the settlement field map →
+          </button>
         </ResearchNote>
 
         <ResearchNote
@@ -2253,6 +2437,8 @@ export function WikiApp() {
     );
   } else if (routeRoot === "progression") {
     content = <ProgressionPage openItem={openItem} />;
+  } else if (routeRoot === "places") {
+    content = <PlacesPage openItem={openItem} />;
   } else if (routeRoot === "guides") {
     content = <FieldGuidesPage openItem={openItem} go={go} />;
   } else if (routeRoot === "changelog") {

@@ -46,6 +46,34 @@ test("generated data preserves secrets, changelogs, and texture links", async ()
     ),
   );
   assert.ok(data.items.every((item) => item.texture));
+  assert.equal(data.locations.length, data.stats.locationCount);
+  assert.ok(data.locations.length >= 10);
+  assert.ok(
+    data.locations.every(
+      (location) =>
+        location.markerKey &&
+        data.items.some((item) => item.key === location.markerKey) &&
+        location.itemKeys.every((key) =>
+          data.items.some((item) => item.key === key),
+        ),
+    ),
+  );
+  assert.equal(
+    data.locations.find((location) => location.id === "frozen-waters").metric,
+    "2 damage · 5 seconds",
+  );
+  assert.match(
+    data.locations.find((location) => location.id === "beta-villages").metric,
+    /1,280 blocks/,
+  );
+  assert.ok(
+    data.locations.every(
+      (location) =>
+        !/biome files|table revised|spacing 80|separation 50/i.test(
+          JSON.stringify(location),
+        ),
+    ),
+  );
   assert.ok(
     data.recipes.every((recipe) =>
       data.items.some((item) => item.key === recipe.result.key),
@@ -104,6 +132,10 @@ test("source keeps the recipe UX, exact slots, and low-compute deployment", asyn
   assert.match(wikiApp, /recipe-catalogue/);
   assert.match(wikiApp, /Find a recipe in this station/);
   assert.match(wikiApp, /function ChangelogPage/);
+  assert.match(wikiApp, /function PlacesPage/);
+  assert.match(wikiApp, /What changes when you get there/);
+  assert.match(wikiApp, /No registry soup/);
+  assert.match(wikiApp, /route: "places"/);
   assert.match(wikiApp, /import\.meta\.env\.BASE_URL/);
   assert.match(wikiApp, /ATTRIBUTIONS\.md/);
   assert.doesNotMatch(wikiApp, /recipe-selection/);
@@ -111,6 +143,7 @@ test("source keeps the recipe UX, exact slots, and low-compute deployment", asyn
   assert.match(updater, /include_changelog=true/);
   assert.match(updater, /failed its SHA-1 check/);
   assert.match(updater, /reviewPendingRecipeCount/);
+  assert.match(updater, /Location item link was not generated/);
   assert.match(updater, /check-exit-code/);
   assert.match(devUpdater, /MATCHA_UPDATE_INTERVAL_MINUTES/);
   assert.match(packageJson, /scripts\/dev-with-updates\.mjs/);
@@ -118,6 +151,7 @@ test("source keeps the recipe UX, exact slots, and low-compute deployment", asyn
   assert.match(globalCss, /\.mc-stonecutting \.mc-output[\s\S]*left: 286px/);
   assert.match(globalCss, /\.mc-smithing \.mc-output[\s\S]*left: 196px/);
   assert.match(globalCss, /\.portal-card small[\s\S]*min-height: 2\.9em/);
+  assert.match(globalCss, /\.place-card-grid/);
 
   assert.match(workflow, /cron: "17 6,18 \* \* \*"/);
   assert.match(workflow, /steps\.gate\.outputs\.publish == 'true'/);

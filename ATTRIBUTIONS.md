@@ -26,25 +26,25 @@ The original pack credits thank the following people and projects for
 inspiration or technical frameworks. The credits also make clear that these
 people do not know of or endorse Matcha Flavoured.
 
-- **Raspmary** — the
+- **Raspmary**: the
   [Raspberry Flavoured](https://www.curseforge.com/minecraft/modpacks/raspberry-flavoured)
   modpack inspired parts of Matcha Flavoured's progression, resources, and
   alloys.
-- **JermsyBoy** — the
+- **JermsyBoy**: the
   [A Little Taste of Jerm](https://www.curseforge.com/minecraft/texture-packs/a-little-taste-of-jerm)
   resource pack inspired Matcha Flavoured's visual direction. JermsyBoy's
   [YouTube channel](https://www.youtube.com/channel/UCICnSwa3x5sHTWmTP6YO30w)
   is also linked in the pack credits.
-- **MiziraGamez** — the
+- **MiziraGamez**: the
   [Repair Cost Remover](https://modrinth.com/datapack/repair-cost-remover)
   datapack provided a framework for endless repairing.
-- **Gooporeal** — the
+- **Gooporeal**: the
   [Gooporeal's Lichen](https://modrinth.com/resourcepack/gooporeals-lichen)
   resource pack inspired the lichen remodels.
-- **Vectorwing** — the
+- **Vectorwing**: the
   [Detail Brush](https://www.curseforge.com/minecraft/texture-packs/detail-brush)
   resource pack inspired many textures.
-- **Rhythmic and PurpurMC** — the
+- **Rhythmic and PurpurMC**: the
   [Looting Shears](https://modrinth.com/datapack/purpurpacks-looting-shears)
   datapack provided a framework for looting shears.
 

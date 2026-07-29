@@ -370,6 +370,64 @@ function ensureItem(id, overrides = {}) {
   return key;
 }
 
+function findFirstLootItem(node) {
+  if (!node || typeof node !== "object") return null;
+  if (
+    node.type === "minecraft:item" &&
+    typeof node.name === "string" &&
+    node.name.includes(":")
+  ) {
+    return node;
+  }
+  for (const value of Object.values(node)) {
+    if (value && typeof value === "object") {
+      const found = findFirstLootItem(value);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function lootTableItemKey(tableId) {
+  const [namespace, tablePath] = splitId(tableId);
+  const table = readJson(
+    path.join(packRoot, "data", namespace, "loot_table", `${tablePath}.json`),
+  );
+  const entry = findFirstLootItem(table);
+  if (!entry) return null;
+
+  const components =
+    entry.functions?.find(
+      (candidate) => candidate?.function === "minecraft:set_components",
+    )?.components || {};
+  const itemName = textComponent(
+    components["minecraft:item_name"] || components["minecraft:custom_name"],
+  );
+  const model = normalizeId(components["minecraft:item_model"] || entry.name);
+  const overrides = {
+    model,
+    color:
+      components["minecraft:item_name"]?.color ||
+      components["minecraft:custom_name"]?.color ||
+      null,
+    lore: (components["minecraft:lore"] || [])
+      .map(textComponent)
+      .filter(Boolean),
+    effects: extractEffects(components),
+    properties: extractProperties(components),
+  };
+  if (itemName) overrides.name = itemName;
+  return ensureItem(entry.name, overrides);
+}
+
+function packFile(relativePath) {
+  return path.join(packRoot, ...relativePath.split("/"));
+}
+
+function hasPackFile(relativePath) {
+  return fs.existsSync(packFile(relativePath));
+}
+
 const tagFallbacks = {
   "minecraft:coals": ["minecraft:coal"],
   "minecraft:eggs": ["minecraft:egg"],
@@ -783,6 +841,386 @@ for (const [levelText, tier] of Object.entries(fishTiers)) {
   });
 }
 
+const waterRegionTags = [
+  "freshwater_cold",
+  "freshwater_cool",
+  "freshwater_hot_dry",
+  "freshwater_hot_wet",
+  "freshwater_temperate",
+  "saltwater_cold",
+  "saltwater_cool",
+  "saltwater_hot",
+  "saltwater_temperate",
+  "saltwater_warm",
+].filter((tag) =>
+  hasPackFile(`data/minecraft/tags/worldgen/biome/${tag}.json`),
+);
+const waterRegionCatchCounts = waterRegionTags.map((table) => {
+  const contents = JSON.stringify(
+    readJson(
+      packFile(`data/minecraft/loot_table/gameplay/fishing/${table}.json`),
+    ) || {},
+  );
+  return new Set(
+    contents.match(/minecraft:gameplay\/fishing\/fish\/[a-z0-9_]+/g) || [],
+  ).size;
+});
+const mainFishingPoolSize = Math.min(...waterRegionCatchCounts.filter(Boolean));
+const villageStructures = [
+  "plains",
+  "desert",
+  "savanna",
+  "snowy",
+  "taiga",
+].filter((variant) =>
+  hasPackFile(`data/minecraft/worldgen/structure/village_${variant}.json`),
+);
+const villagePlacement =
+  readJson(packFile("data/minecraft/worldgen/structure_set/villages.json"))
+    ?.placement || {};
+const villageRegionBlocks = Number(villagePlacement.spacing || 0) * 16;
+const specialFishingTables = [
+  "deep_dark",
+  "pale_garden",
+  "sulfur_caves",
+  "swamps",
+].filter((table) =>
+  hasPackFile(`data/minecraft/loot_table/gameplay/fishing/${table}.json`),
+);
+const bastionCacheFiles = [
+  "data/minecraft/loot_table/chests/bastion_bridge.json",
+  "data/minecraft/loot_table/chests/bastion_hoglin_stable.json",
+  "data/minecraft/loot_table/chests/bastion_other.json",
+  "data/minecraft/loot_table/chests/bastion_treasure.json",
+];
+const rubyBastionCaches = bastionCacheFiles.filter((file) =>
+  fs
+    .readFileSync(packFile(file), "utf8")
+    .includes("minecraft:kleis_items/ruby"),
+);
+
+const wardingStoneKey = ensureItem("minecraft:flower_banner_pattern", {
+  model: "minecraft:warding_stone",
+  name: "Warding Stone",
+});
+const divineFragmentKey =
+  lootTableItemKey("minecraft:kleis_items/divine_fragment") ||
+  ensureItem("minecraft:turtle_scute");
+const crystalHeartKey =
+  lootTableItemKey("minecraft:kleis_items/crystal_heart") ||
+  ensureItem("minecraft:poisonous_potato");
+const rubyKey = lootTableItemKey("minecraft:kleis_items/ruby");
+const topazKey = lootTableItemKey("minecraft:kleis_items/topaz");
+const solomonKey = lootTableItemKey("minecraft:kleis_items/solomon");
+const avestaKey = lootTableItemKey("minecraft:kleis_items/avesta");
+const enochKey = lootTableItemKey("minecraft:kleis_items/enoch");
+const specialCompassKey = lootTableItemKey(
+  "minecraft:chests/equipment/special_compass",
+);
+
+const locations = [];
+
+function addLocation(sourceFiles, record) {
+  const detectedSources = sourceFiles.filter(hasPackFile);
+  if (!detectedSources.length) return;
+  locations.push({
+    ...record,
+    itemKeys: [...new Set((record.itemKeys || []).filter(Boolean))],
+    sourceCount: detectedSources.length,
+  });
+}
+
+addLocation(
+  [
+    "data/minecraft/worldgen/biome/plains.json",
+    "data/minecraft/worldgen/biome/desert.json",
+    "data/minecraft/worldgen/biome/frozen_ocean.json",
+  ],
+  {
+    id: "biome-palettes",
+    group: "Living world",
+    name: "Biome palettes",
+    kicker: "The horizon is part of the map",
+    summary:
+      "You do not need a debug screen to feel the climate change. Look up, look through the fog, then check the water at your boots.",
+    metric: "Watch sky · fog · water",
+    findings: [
+      "Cross into snow country and the scene turns milk-blue; small white flecks drift through the air.",
+      "Badlands and deserts wash toward dusty grey-green water, while jungle, mangrove, and lush-cave water becomes a clearer bright blue.",
+      "The biome names stay familiar. Treat the colour shift as a travel cue: if the whole horizon changes, your local rules may have changed too.",
+    ],
+    markerKey: ensureItem("minecraft:filled_map"),
+    itemKeys: [
+      ensureItem("minecraft:water_bucket"),
+      ensureItem("minecraft:packed_ice"),
+      ensureItem("minecraft:red_sand"),
+    ],
+    tone: "sage",
+  },
+);
+
+addLocation(["data/minecraft/loot_table/gameplay/fishing.json"], {
+  id: "regional-fishing",
+  group: "Living world",
+  name: "Regional fishing",
+  kicker: "Same rod, different supper",
+  summary:
+    "A good fishing trip involves moving camp. Each ordinary climate pool keeps its own little roster instead of serving the same fish everywhere.",
+  metric: `${mainFishingPoolSize} species in each main pool`,
+  findings: [
+    `${waterRegionTags.length / 2} freshwater climates and ${waterRegionTags.length / 2} saltwater climates give you ten ordinary rosters to complete.`,
+    `Swamps mix their own five-fish set. The Deep Dark, Pale Garden, and Sulfur Caves make up the other ${specialFishingTables.length - 1} special stops, each interrupting the normal catch with something local.`,
+    "Common and uncommon names are written plainly. Rare and epic specimens keep their real texture but answer to enchanting-table script here.",
+  ],
+  markerKey: ensureItem("minecraft:fishing_rod"),
+  itemKeys: fish
+    .filter((entry) => !entry.obscured)
+    .slice(0, 5)
+    .map((entry) => entry.itemKey),
+  tone: "water",
+});
+
+addLocation(
+  [
+    "data/main/function/environmental/check_freezing_water_conditions.mcfunction",
+    "data/main/function/environmental/freezing_water.mcfunction",
+  ],
+  {
+    id: "frozen-waters",
+    group: "Living world",
+    name: "Frozen waters",
+    kicker: "The water bites back",
+    summary:
+      "Once your head goes under in a frozen biome, this stops being a scenic swim and becomes a five-second problem.",
+    metric: "2 damage · 5 seconds",
+    findings: [
+      "Each check deals 2 points of freeze damage. That is one full heart.",
+      "The same dip applies Slowness V and Darkness for five seconds, which makes the shoreline feel much farther away.",
+      "Freezing Protection III on your chest gear cancels the hazard. Creative-mode swimmers are left alone.",
+    ],
+    markerKey: ensureItem("minecraft:packed_ice"),
+    itemKeys: [
+      ensureItem("minecraft:leather_chestplate"),
+      ensureItem("minecraft:powder_snow_bucket"),
+    ],
+    tone: "frost",
+  },
+);
+
+addLocation(
+  [
+    "data/minecraft/worldgen/structure_set/villages.json",
+    "data/minecraft/worldgen/template_pool/village_beta/town_centers.json",
+    "data/main/function/environmental/village_eerie_sound.mcfunction",
+  ],
+  {
+    id: "beta-villages",
+    group: "Settlements",
+    name: "Rebuilt villages",
+    kicker: "Pack lunch; the next bell is not nearby",
+    summary:
+      "A village feels like a rare little event now: one rough, older building style dressed for five climates, with a silence that notices you back.",
+    metric: `${villageRegionBlocks.toLocaleString()} blocks across`,
+    findings: [
+      `Village search regions span ${villageRegionBlocks.toLocaleString()} blocks from edge to edge. That is a proper expedition, not a quick jog over the next hill.`,
+      `${villageStructures.length} climates use the same beta-style bones: plains, desert, savanna, snowy, and taiga. The silhouette becomes easy to recognise.`,
+      "Cross the settlement boundary and the music stops. Spare footsteps, soft breaks, and cave-like sounds make an empty street feel occupied.",
+      "Wandering Traders can sell maps to all five village climates for one Obol each, and some offers let you recruit an Asylum Seeker.",
+    ],
+    markerKey: ensureItem("minecraft:bell"),
+    itemKeys: [
+      wardingStoneKey,
+      ensureItem("minecraft:emerald"),
+      ensureItem("minecraft:map"),
+      ensureItem("minecraft:villager_spawn_egg", {
+        model: "minecraft:application",
+        name: "Asylum Seeker",
+      }),
+    ],
+    tone: "parchment",
+  },
+);
+
+addLocation(
+  [
+    "data/main/function/mechanic/warding_stone_forbidden.mcfunction",
+    "data/minecraft/loot_table/chests/trial_chambers/reward_unique.json",
+    "data/minecraft/loot_table/chests/trial_chambers/reward_ominous_unique.json",
+  ],
+  {
+    id: "trial-chambers",
+    group: "Expeditions",
+    name: "Trial Chambers",
+    kicker: "The Warding Stone says: absolutely not",
+    summary:
+      "Bring a Warding Stone if you enjoy receiving exactly zero seconds of protection and one very loud correction.",
+    metric: "0 seconds of warding",
+    findings: [
+      "Place the stone anywhere inside the structure and it is immediately removed in a TNT burst with a cloud of sculk souls.",
+      "Open an ordinary unique reward and a trident is now one of the headline prizes.",
+      "Take on the ominous route and its special pool can hand over a Heavy Core or Divine Fragment.",
+    ],
+    markerKey: ensureItem("minecraft:trial_key"),
+    itemKeys: [
+      wardingStoneKey,
+      ensureItem("minecraft:trident"),
+      ensureItem("minecraft:heavy_core"),
+      divineFragmentKey,
+    ],
+    tone: "copper",
+  },
+);
+
+addLocation(
+  [
+    "data/minecraft/loot_table/chests/stronghold_corridor.json",
+    "data/minecraft/loot_table/chests/stronghold_library.json",
+    "data/main/advancement/tutorial/find_stronghold.json",
+  ],
+  {
+    id: "strongholds",
+    group: "Expeditions",
+    name: "Strongholds",
+    kicker: "The library finally has a reading list",
+    summary:
+      "The portal is still the grand objective, but the shelves and corridor chests now make the walk there worth rummaging through.",
+    metric: "5 named finds to recognise",
+    findings: [
+      "Step into the structure and The End of Dreams milestone records the discovery.",
+      "Check corridor chests for three Matcha finds: a Divine Fragment, Crystal Heart, and the Labyrinthine record.",
+      "Check the library for two more: a Titanium Compass and The Lesser Key of Solomon.",
+    ],
+    markerKey: ensureItem("minecraft:ender_eye"),
+    itemKeys: [
+      divineFragmentKey,
+      crystalHeartKey,
+      ensureItem("minecraft:music_disc_otherside", {
+        model: "minecraft:music_disc_labyrinthine",
+        name: "Labyrinthine",
+      }),
+      specialCompassKey,
+      solomonKey,
+    ],
+    tone: "stone",
+  },
+);
+
+addLocation(
+  [
+    "data/minecraft/loot_table/chests/ancient_city.json",
+    "data/minecraft/loot_table/gameplay/fishing/deep_dark.json",
+    "data/minecraft/villager_trade/cartographer/4/ancient_city.json",
+  ],
+  {
+    id: "ancient-cities",
+    group: "Expeditions",
+    name: "Ancient Cities",
+    kicker: "One map in, three treasures out",
+    summary:
+      "The Deep Dark now has a clearer expedition loop: buy the map, mind the shrieking, check the chests, and go fishing if bravery has become poor judgement.",
+    metric: "1 map · 3 special finds",
+    findings: [
+      "An expert Cartographer can sell the explorer map that points the way.",
+      "City chests add three special finds to watch for: Topaz, Crystal Hearts, and Divine Fragments.",
+      "Deep Dark water has one local catch layered over an ordinary freshwater pool. Its name stays in enchanting-table script.",
+    ],
+    markerKey: ensureItem("minecraft:echo_shard"),
+    itemKeys: [
+      topazKey,
+      crystalHeartKey,
+      divineFragmentKey,
+      ensureItem("minecraft:echo_shard"),
+    ],
+    tone: "deep",
+  },
+);
+
+addLocation(
+  [
+    "data/minecraft/loot_table/chests/abandoned_mineshaft.json",
+    "data/minecraft/loot_table/chests/simple_dungeon.json",
+    "data/minecraft/loot_table/chests/desert_pyramid.json",
+    "data/minecraft/loot_table/chests/buried_treasure.json",
+    "data/minecraft/loot_table/chests/shipwreck_treasure.json",
+  ],
+  {
+    id: "roads-and-ruins",
+    group: "Expeditions",
+    name: "Ruins worth stopping for",
+    kicker: "Check the chest before calling it clutter",
+    summary:
+      "The small stops on a long walk now carry real reasons to dismount. Five familiar landmark families hide books, equipment, food, and one sealed note.",
+    metric: "5 stops · 1 secret",
+    findings: [
+      "Desert Pyramid chests can hold The Avesta.",
+      "Simple Dungeon chests can hold The Book of Enoch or a Crystal Heart.",
+      "Buried treasure and shipwrecks are the places to check for special books, tridents, sturdy gear, and Titanium Compasses.",
+      "Abandoned Mineshafts can hold one secret. This notebook has suddenly run out of ink.",
+    ],
+    markerKey: ensureItem("minecraft:compass"),
+    itemKeys: [
+      avestaKey,
+      enochKey,
+      crystalHeartKey,
+      ensureItem("minecraft:trident"),
+      specialCompassKey,
+    ],
+    tone: "sand",
+  },
+);
+
+addLocation(
+  [
+    "data/minecraft/loot_table/chests/bastion_bridge.json",
+    "data/minecraft/loot_table/chests/bastion_hoglin_stable.json",
+    "data/minecraft/loot_table/chests/bastion_other.json",
+    "data/minecraft/loot_table/chests/bastion_treasure.json",
+  ],
+  {
+    id: "bastions",
+    group: "Other dimensions",
+    name: "Bastion Remnants",
+    kicker: "Three Ruby stops, one very hot walk",
+    summary:
+      "The piglins have excellent taste in red gemstones and terrible opinions about visitors. Three parts of a Bastion can pay for the risk.",
+    metric: `${rubyBastionCaches.length} Ruby-bearing cache types`,
+    findings: [
+      "Bridge, Hoglin Stable, and Treasure caches each include a Ruby roll.",
+      "Gold and damaged diamond gear arrive through the pack’s curated equipment sets instead of a long scatter of separate tool rolls.",
+      "Treasure rooms still carry Netherite Upgrade templates, scrap, ingots, and ancient debris beside the new gem.",
+    ],
+    markerKey: rubyKey || ensureItem("minecraft:gilded_blackstone"),
+    itemKeys: [
+      rubyKey,
+      ensureItem("minecraft:netherite_upgrade_smithing_template"),
+      ensureItem("minecraft:netherite_scrap"),
+    ],
+    tone: "nether",
+  },
+);
+
+addLocation(["data/minecraft/loot_table/chests/end_city_treasure.json"], {
+  id: "end-cities",
+  group: "Other dimensions",
+  name: "End Cities",
+  kicker: "Less lottery, more loadout",
+  summary:
+    "The purple towers still pay well, but their chests are easier to read: one curated diamond-equipment pool replaces a pile of separate enchanted gear rolls.",
+  metric: "1 curated diamond gear pool",
+  findings: [
+    "When diamond gear rolls, it comes from one shared enchanted set rather than a random parade of separately defined tools and armour.",
+    "Iron blocks, loose diamonds, emeralds, gold, iron, and horse armour still fill out the haul.",
+    "The Spire armour trim remains in the same city chest, so fashion survives the cleanup.",
+  ],
+  markerKey: ensureItem("minecraft:ender_chest"),
+  itemKeys: [
+    ensureItem("minecraft:diamond_chestplate"),
+    ensureItem("minecraft:iron_block"),
+    ensureItem("minecraft:spire_armor_trim_smithing_template"),
+  ],
+  tone: "end",
+});
+
 recipes.sort((a, b) => {
   if (a.station !== b.station) {
     return a.stationLabel.localeCompare(b.stationLabel);
@@ -833,6 +1271,7 @@ const output = {
     craftingCount: stationCounts.crafting,
     itemCount: items.length,
     advancementCount: advancements.length,
+    locationCount: locations.length,
     textureCount: walk(
       path.join(publicRoot, "minecraft/assets/minecraft/textures"),
     ).filter((file) => file.endsWith(".png")).length,
@@ -852,6 +1291,7 @@ const output = {
   items,
   advancements,
   fish,
+  locations,
 };
 
 fs.mkdirSync(path.dirname(outputFile), { recursive: true });

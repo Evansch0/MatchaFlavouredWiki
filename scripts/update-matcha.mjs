@@ -433,9 +433,21 @@ function validateGeneratedData(file, versionId) {
     data.release?.versionId !== versionId ||
     data.recipes.length === 0 ||
     data.items.length === 0 ||
+    data.locations.length === 0 ||
     data.items.some((item) => !item.texture)
   ) {
     throw new Error("Generated wiki data failed validation.");
+  }
+  const itemKeys = new Set(data.items.map((item) => item.key));
+  const brokenLocation = data.locations.find(
+    (location) =>
+      !itemKeys.has(location.markerKey) ||
+      location.itemKeys.some((key) => !itemKeys.has(key)),
+  );
+  if (brokenLocation) {
+    throw new Error(
+      `Location item link was not generated: ${brokenLocation.id}`,
+    );
   }
   const exposedSecret = data.recipes.find(
     (recipe) =>
