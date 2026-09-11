@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { recipeContentSha1 } from "./recipe-fingerprint.mjs";
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -275,7 +276,7 @@ function recipeId(packRoot, file) {
 }
 
 async function ensureVisibilityManifest(packRoot, currentData, latestFile) {
-  if (readJson(visibilityManifestFile)?.recipes) return;
+  const existingManifest = readJson(visibilityManifestFile);
   let visibilityPackRoot = packRoot;
   if (currentData?.release?.sha1 !== latestFile.hashes.sha1) {
     const currentRelease = currentData?.release;
@@ -298,6 +299,33 @@ async function ensureVisibilityManifest(packRoot, currentData, latestFile) {
     });
     visibilityPackRoot = seedPack.packRoot;
   }
+  const visibilityRecipeFiles = walk(
+    path.join(visibilityPackRoot, "data"),
+  ).filter(
+    (candidate) =>
+      candidate.endsWith(".json") &&
+      candidate.split(path.sep).includes("recipe"),
+  );
+
+  if (existingManifest?.recipes) {
+    let changed = false;
+    for (const file of visibilityRecipeFiles) {
+      const id = recipeId(visibilityPackRoot, file);
+      const approved = existingManifest.recipes[id];
+      if (!approved || approved.contentSha1) continue;
+      if ((await sha1File(file)) !== approved.sha1) continue;
+      approved.contentSha1 = recipeContentSha1(readJson(file));
+      changed = true;
+    }
+    if (changed) {
+      writeJsonAtomic(visibilityManifestFile, {
+        ...existingManifest,
+        schema: 2,
+      });
+    }
+    return;
+  }
+
   const currentVisibility = new Map(
     (currentData.recipes || []).map((recipe) => [
       recipe.id,
@@ -305,19 +333,16 @@ async function ensureVisibilityManifest(packRoot, currentData, latestFile) {
     ]),
   );
   const recipes = {};
-  for (const file of walk(path.join(visibilityPackRoot, "data")).filter(
-    (candidate) =>
-      candidate.endsWith(".json") &&
-      candidate.split(path.sep).includes("recipe"),
-  )) {
+  for (const file of visibilityRecipeFiles) {
     const id = recipeId(visibilityPackRoot, file);
     recipes[id] = {
       sha1: await sha1File(file),
+      contentSha1: recipeContentSha1(readJson(file)),
       visibility: currentVisibility.get(id) || "secret",
     };
   }
   writeJsonAtomic(visibilityManifestFile, {
-    schema: 1,
+    schema: 2,
     seededFromVersion: currentData.release.version,
     note: "Changed or new recipe files are hidden automatically until this manifest is reviewed.",
     recipes,
@@ -359,7 +384,11 @@ async function ensureVanillaAssets(gameVersion, metadata) {
       "assets/minecraft/lang/*",
       "assets/minecraft/models/*",
       "assets/minecraft/textures/*",
+      "data/minecraft/recipe/*",
     ]);
+  }
+  if (!fs.existsSync(path.join(extractedRoot, "data/minecraft/recipe"))) {
+    unzip(archive, extractedRoot, ["data/minecraft/recipe/*"]);
   }
   return extractedRoot;
 }
@@ -407,6 +436,7 @@ function runGenerator({
   releaseMetadataFile,
   stagingPublic,
   stagedData,
+  vanillaRoot,
 }) {
   const result = spawnSync(
     process.execPath,
@@ -417,6 +447,7 @@ function runGenerator({
       releaseMetadataFile,
       stagingPublic,
       visibilityManifestFile,
+      vanillaRoot,
     ],
     { cwd: projectRoot, stdio: "inherit" },
   );
@@ -462,16 +493,34 @@ function validateGeneratedData(file, versionId) {
   return data;
 }
 
+function replaceGeneratedDirectory(source, target) {
+  const next = `${target}.next`;
+  const previous = `${target}.previous`;
+  fs.rmSync(next, { recursive: true, force: true });
+  fs.rmSync(previous, { recursive: true, force: true });
+  fs.cpSync(source, next, { recursive: true, force: true });
+  if (fs.existsSync(target)) {
+    fs.renameSync(target, previous);
+  }
+  try {
+    fs.renameSync(next, target);
+  } catch (error) {
+    if (fs.existsSync(previous) && !fs.existsSync(target)) {
+      fs.renameSync(previous, target);
+    }
+    throw error;
+  }
+  fs.rmSync(previous, { recursive: true, force: true });
+}
+
 function publishUpdate(stagingPublic, stagedData, releaseMetadata) {
-  fs.cpSync(
+  replaceGeneratedDirectory(
     path.join(stagingPublic, "minecraft"),
     path.join(projectRoot, "public/minecraft"),
-    { recursive: true, force: true },
   );
-  fs.cpSync(
+  replaceGeneratedDirectory(
     path.join(stagingPublic, "matcha"),
     path.join(projectRoot, "public/matcha"),
-    { recursive: true, force: true },
   );
   const nextData = `${liveDataFile}.next`;
   fs.copyFileSync(stagedData, nextData);
@@ -547,6 +596,7 @@ export async function checkForMatchaUpdate({
     releaseMetadataFile,
     stagingPublic,
     stagedData,
+    vanillaRoot,
   });
   const generated = validateGeneratedData(stagedData, version.id);
   publishUpdate(stagingPublic, stagedData, releaseMetadata);

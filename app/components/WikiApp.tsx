@@ -31,6 +31,7 @@ type Recipe = {
   stationTexture: string;
   category: string;
   family: string;
+  changeKind: "added" | "changed";
   secret: boolean;
   result: { key: string; count: number };
   ingredientKeys: string[];
@@ -87,6 +88,12 @@ type LocationRecord = {
   summary: string;
   metric: string;
   findings: string[];
+  facts: { label: string; value: string }[];
+  sections: {
+    title: string;
+    body: string;
+    points: string[];
+  }[];
   markerKey: string;
   itemKeys: string[];
   sourceCount: number;
@@ -125,6 +132,7 @@ type WikiData = {
     locationCount: number;
     textureCount: number;
     reviewPendingRecipeCount?: number;
+    excludedVanillaRecipeCount?: number;
   };
   stations: {
     id: string;
@@ -137,6 +145,16 @@ type WikiData = {
   advancements: Advancement[];
   fish: FishEntry[];
   locations: LocationRecord[];
+  progressionRules: {
+    deathHeartLoss: number;
+    startingMinimumHearts: number;
+    lowestMinimumHearts: number | null;
+    easyMinimumHearts: number;
+    maximumHearts: number;
+    crystalHeartGain: number;
+    hardDifficultyAtMinimum: number;
+    milestones: string[];
+  } | null;
 };
 
 const wikiData = wikiDataJson as unknown as WikiData;
@@ -190,12 +208,6 @@ const lightSurfaceItemColors: Record<string, string> = {
 function readableItemColor(color?: string | null) {
   if (!color) return undefined;
   return lightSurfaceItemColors[color.toLowerCase()] || color;
-}
-
-function friendlyCategory(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function normalizeSearchText(value: string) {
@@ -1193,6 +1205,11 @@ function RecipeWorkbench({
             Makes {recipe.result.count}
             {recipe.result.count === 1 ? " item" : " items"}
           </span>
+          <span className={`recipe-change recipe-change-${recipe.changeKind}`}>
+            {recipe.changeKind === "changed"
+              ? "Changed by Matcha"
+              : "Added by Matcha"}
+          </span>
         </div>
         <code>{recipe.id}</code>
       </header>
@@ -1260,12 +1277,14 @@ function RecipesPage({
     <div className="page recipes-page">
       <header className="page-intro">
         <div>
-          <p className="eyebrow">All {wikiData.stats.recipeCount} recipes</p>
+          <p className="eyebrow">
+            All {wikiData.stats.recipeCount} Matcha recipes
+          </p>
           <h1>Recipe Book</h1>
         </div>
         <p>
-          Pick a station, open a family, and choose what you want to make. Each
-          recipe gets a clean page of its own.
+          Only recipes added or changed by Matcha live here. Pick a station,
+          open a family, and choose what you want to make.
         </p>
       </header>
 
@@ -1366,9 +1385,9 @@ function RecipesPage({
                           <small>
                             {recipe.secret
                               ? "Secret recipe"
-                              : recipe.result.count > 1
-                                ? `Makes ${recipe.result.count}`
-                                : friendlyCategory(recipe.category)}
+                              : recipe.changeKind === "changed"
+                                ? "Changed by Matcha"
+                                : "Added by Matcha"}
                           </small>
                         </span>
                         <span aria-hidden="true">→</span>
@@ -1460,6 +1479,10 @@ function ProgressionPage({ openItem }: { openItem: (item: Item) => void }) {
       note: "The blast furnace and smithing table carry progression onward.",
     },
   ];
+  const progressionRuleItems = [
+    findItem("Crystal Heart"),
+    itemByKey("minecraft:emerald"),
+  ].filter(Boolean) as Item[];
 
   const visibleAdvancements = wikiData.advancements.filter(
     (advancement) => advancement.section === section,
@@ -1505,6 +1528,87 @@ function ProgressionPage({ openItem }: { openItem: (item: Item) => void }) {
           ))}
         </div>
       </section>
+
+      {wikiData.progressionRules && (
+        <section className="progression-rules">
+          <div className="section-heading">
+            <div>
+              <p className="section-kicker">Current release rules</p>
+              <h2>What a death actually changes</h2>
+            </div>
+            <p>
+              Read from the health and difficulty functions in release{" "}
+              {wikiData.release.version}.
+            </p>
+          </div>
+          <div className="progression-rule-grid">
+            <article>
+              <span>01 · DEATH</span>
+              <h3>One heart comes off</h3>
+              <p>
+                Each death removes {wikiData.progressionRules.deathHeartLoss}{" "}
+                heart from your maximum health. Normal mode will not let that
+                total fall below the minimum your world has reached.
+              </p>
+              <dl>
+                <div>
+                  <dt>Starting floor</dt>
+                  <dd>
+                    {wikiData.progressionRules.startingMinimumHearts} hearts
+                  </dd>
+                </div>
+                <div>
+                  <dt>Easy mode floor</dt>
+                  <dd>{wikiData.progressionRules.easyMinimumHearts} hearts</dd>
+                </div>
+              </dl>
+            </article>
+            <article>
+              <span>02 · PROGRESS</span>
+              <h3>The safety floor moves</h3>
+              <p>
+                Major ages lower the minimum by one heart each. On Normal, the
+                world changes to Hard when that floor reaches{" "}
+                {wikiData.progressionRules.hardDifficultyAtMinimum} hearts.
+              </p>
+              <div className="progression-stage-list">
+                {wikiData.progressionRules.milestones.map((milestone) => (
+                  <small key={milestone}>{milestone}</small>
+                ))}
+              </div>
+              {wikiData.progressionRules.lowestMinimumHearts !== null && (
+                <strong>
+                  Lowest recorded floor:{" "}
+                  {wikiData.progressionRules.lowestMinimumHearts} hearts
+                </strong>
+              )}
+            </article>
+            <article>
+              <span>03 · RECOVERY</span>
+              <h3>Crystal Hearts build it back</h3>
+              <p>
+                A Crystal Heart adds{" "}
+                {wikiData.progressionRules.crystalHeartGain} heart to your
+                maximum health, up to {wikiData.progressionRules.maximumHearts}.
+                Advancement rewards can also pay Obols, so progress now feeds
+                both survival and trade.
+              </p>
+              <div className="progression-rule-items">
+                {progressionRuleItems.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => openItem(item)}
+                  >
+                    <ItemSprite item={item} size="md" />
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            </article>
+          </div>
+        </section>
+      )}
 
       <section className="advancement-index">
         <div className="section-heading">
@@ -1671,7 +1775,13 @@ function ChangelogPage() {
   );
 }
 
-function PlacesPage({ openItem }: { openItem: (item: Item) => void }) {
+function PlacesPage({
+  openItem,
+  openPlace,
+}: {
+  openItem: (item: Item) => void;
+  openPlace: (place: LocationRecord) => void;
+}) {
   const groups = [...new Set(wikiData.locations.map((place) => place.group))];
   const jumpToGroup = (group: string) => {
     document
@@ -1781,10 +1891,19 @@ function PlacesPage({ openItem }: { openItem: (item: Item) => void }) {
 
                       <p className="place-summary">{place.summary}</p>
                       <ul className="place-findings">
-                        {place.findings.map((finding) => (
+                        {place.findings.slice(0, 2).map((finding) => (
                           <li key={finding}>{finding}</li>
                         ))}
                       </ul>
+
+                      <button
+                        className="place-read-more"
+                        type="button"
+                        onClick={() => openPlace(place)}
+                      >
+                        Read the full field entry{" "}
+                        <span aria-hidden="true">→</span>
+                      </button>
 
                       {specimens.length > 0 && (
                         <footer>
@@ -1811,6 +1930,136 @@ function PlacesPage({ openItem }: { openItem: (item: Item) => void }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function PlacePage({
+  place,
+  openItem,
+  openPlace,
+  go,
+}: {
+  place?: LocationRecord;
+  openItem: (item: Item) => void;
+  openPlace: (place: LocationRecord) => void;
+  go: (route: string) => void;
+}) {
+  if (!place) {
+    return (
+      <div className="page empty-state">
+        <span>⌖</span>
+        <h1>That map page is missing.</h1>
+        <p>The location may have moved between releases.</p>
+        <button className="button button-earth" onClick={() => go("places")}>
+          Return to Places
+        </button>
+      </div>
+    );
+  }
+
+  const marker = itemByKey(place.markerKey);
+  const specimens = place.itemKeys.map(itemByKey).filter(Boolean) as Item[];
+  const nearby = wikiData.locations
+    .filter((candidate) => candidate.id !== place.id)
+    .sort((a, b) => {
+      const aMatches = a.group === place.group ? 0 : 1;
+      const bMatches = b.group === place.group ? 0 : 1;
+      return aMatches - bMatches || a.name.localeCompare(b.name);
+    })
+    .slice(0, 3);
+
+  return (
+    <div className={`page place-detail-page place-tone-${place.tone}`}>
+      <button
+        className="detail-back"
+        type="button"
+        onClick={() => go("places")}
+      >
+        ← All places
+      </button>
+
+      <header className="place-detail-hero">
+        <div className="place-detail-marker">
+          <ItemSprite item={marker} size="lg" onOpen={openItem} />
+        </div>
+        <div>
+          <p>{place.group} · FIELD ENTRY</p>
+          <h1>{place.name}</h1>
+          <strong>{place.kicker}</strong>
+          <span>{place.summary}</span>
+        </div>
+      </header>
+
+      <section className="place-fact-strip" aria-label="At a glance">
+        {place.facts.map((fact) => (
+          <div key={`${fact.label}-${fact.value}`}>
+            <small>{fact.label}</small>
+            <strong>{fact.value}</strong>
+          </div>
+        ))}
+      </section>
+
+      <div className="place-article-layout">
+        <div className="place-article">
+          {place.sections.map((section, index) => (
+            <section key={section.title}>
+              <header>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <h2>{section.title}</h2>
+              </header>
+              <p>{section.body}</p>
+              {section.points.length > 0 && (
+                <ul>
+                  {section.points.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </div>
+
+        <aside className="place-reference-card">
+          <p>FIELD KIT</p>
+          <h2>Worth recognising</h2>
+          <div>
+            {specimens.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => openItem(item)}
+              >
+                <ItemSprite item={item} size="md" />
+                <span>
+                  <strong>{item.name}</strong>
+                  <small>Open item entry</small>
+                </span>
+              </button>
+            ))}
+          </div>
+          <footer>
+            Checked against Matcha Flavoured {wikiData.release.version}
+          </footer>
+        </aside>
+      </div>
+
+      <nav className="nearby-place-pages" aria-label="Related place pages">
+        <p>Keep reading</p>
+        <div>
+          {nearby.map((candidate) => (
+            <button
+              key={candidate.id}
+              type="button"
+              onClick={() => openPlace(candidate)}
+            >
+              <small>{candidate.group}</small>
+              <strong>{candidate.name}</strong>
+              <span aria-hidden="true">→</span>
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }
@@ -2386,7 +2635,9 @@ export function WikiApp() {
         ? "Item Pantry"
         : routeRoot === "recipe"
           ? "Recipe Book"
-          : "Wiki"),
+          : routeRoot === "place"
+            ? "Places"
+            : "Wiki"),
     [routeRoot],
   );
 
@@ -2403,6 +2654,10 @@ export function WikiApp() {
 
   const openRecipe = (recipe: Recipe) => {
     go(`recipe/${encodeURIComponent(recipe.id)}`);
+  };
+
+  const openPlace = (place: LocationRecord) => {
+    go(`place/${encodeURIComponent(place.id)}`);
   };
 
   let content = <HomePage go={go} openItem={openItem} />;
@@ -2438,7 +2693,20 @@ export function WikiApp() {
   } else if (routeRoot === "progression") {
     content = <ProgressionPage openItem={openItem} />;
   } else if (routeRoot === "places") {
-    content = <PlacesPage openItem={openItem} />;
+    content = <PlacesPage openItem={openItem} openPlace={openPlace} />;
+  } else if (routeRoot === "place") {
+    const placeId = decodeURIComponent(route.split("/").slice(1).join("/"));
+    const selectedPlace = wikiData.locations.find(
+      (place) => place.id === placeId,
+    );
+    content = (
+      <PlacePage
+        place={selectedPlace}
+        openItem={openItem}
+        openPlace={openPlace}
+        go={go}
+      />
+    );
   } else if (routeRoot === "guides") {
     content = <FieldGuidesPage openItem={openItem} go={go} />;
   } else if (routeRoot === "changelog") {

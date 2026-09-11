@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import {
+  recipeContentSha1,
+  recipeSemanticSha1,
+} from "./recipe-fingerprint.mjs";
 
 const projectRoot = process.cwd();
 const packRoot = process.argv[2] || "/tmp/matcha-flavoured-1.02";
@@ -10,6 +14,7 @@ const releaseMetadataFile = process.argv[4] || "";
 const publicRoot = process.argv[5] || path.join(projectRoot, "public");
 const visibilityManifestFile =
   process.argv[6] || path.join(projectRoot, "app/data/recipe-visibility.json");
+const vanillaRoot = process.argv[7] || "";
 const releaseMetadata = releaseMetadataFile
   ? readJson(releaseMetadataFile)
   : null;
@@ -64,6 +69,14 @@ function readJson(file) {
     return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch {
     return null;
+  }
+}
+
+function readText(file) {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
   }
 }
 
@@ -127,6 +140,18 @@ function nameForId(id) {
   return (
     translated(`item.${namespace}.${itemPath}`) ||
     translated(`block.${namespace}.${itemPath}`) ||
+    titleCase(itemPath)
+  );
+}
+
+function nameForModel(model, fallbackId) {
+  if (model === fallbackId) return nameForId(fallbackId);
+  const [namespace, itemPath] = splitId(model);
+  return (
+    translated(`item.${namespace}.${itemPath}`) ||
+    translated(`block.${namespace}.${itemPath}`) ||
+    translated(`item.kleispack.${itemPath}`) ||
+    translated(`item.kleispack.fish.${itemPath}`) ||
     titleCase(itemPath)
   );
 }
@@ -335,7 +360,7 @@ function ensureItem(id, overrides = {}) {
     key,
     id: normalizedId,
     model,
-    name: nameForId(normalizedId),
+    name: nameForModel(model, normalizedId),
     texture: resolveItemTexture(model, normalizedId),
     color: null,
     lore: [],
@@ -428,15 +453,102 @@ function hasPackFile(relativePath) {
   return fs.existsSync(packFile(relativePath));
 }
 
+function firstScoreValue(relativePath, pattern) {
+  const match = readText(packFile(relativePath)).match(pattern);
+  return match ? Number(match[1]) : null;
+}
+
+const heartMilestones = [
+  "copper",
+  "iron",
+  "diamond",
+  "nether",
+  "netherite",
+  "electrum",
+  "end",
+].filter((stage) =>
+  hasPackFile(
+    `data/main/function/mechanic/heart_container/decreases/decrease_${stage}_age.mcfunction`,
+  ),
+);
+const heartAnnouncementText = readText(
+  packFile(
+    "data/main/function/mechanic/heart_container/decreases/decrease_announcement.mcfunction",
+  ),
+);
+const announcedHeartFloors = [
+  ...heartAnnouncementText.matchAll(/matches (\d+) run tellraw/g),
+].map((match) => Number(match[1]) / 2);
+const progressionRules = hasPackFile(
+  "data/main/function/mechanic/heart_container/detect_death.mcfunction",
+)
+  ? {
+      deathHeartLoss:
+        (firstScoreValue(
+          "data/main/function/mechanic/heart_container/hpdown.mcfunction",
+          /players remove @s Hearts (\d+)/,
+        ) || 2) / 2,
+      startingMinimumHearts:
+        (firstScoreValue(
+          "data/main/function/setup/set_minimum_hearts_on_first_load.mcfunction",
+          /current_minimum_hearts Hearts (\d+)/,
+        ) || 20) / 2,
+      lowestMinimumHearts: announcedHeartFloors.length
+        ? Math.min(...announcedHeartFloors)
+        : null,
+      easyMinimumHearts:
+        (firstScoreValue(
+          "data/main/function/mechanic/heart_container/set_max_hp.mcfunction",
+          /matches 1[^\n]+set @s Hearts (\d+)/,
+        ) || 20) / 2,
+      maximumHearts:
+        (firstScoreValue(
+          "data/main/function/setup/scoreboard.mcfunction",
+          /maximum_hearts Hearts (\d+)/,
+        ) || 60) / 2,
+      crystalHeartGain:
+        (firstScoreValue(
+          "data/main/function/mechanic/heart_container/clear_heart_container.mcfunction",
+          /players add @s Hearts (\d+)/,
+        ) || 2) / 2,
+      hardDifficultyAtMinimum:
+        (firstScoreValue(
+          "data/main/function/mechanic/difficulty_scaling/check_difficulty_condition.mcfunction",
+          /current_minimum_hearts Hearts matches (\d+)/,
+        ) || 10) / 2,
+      milestones: heartMilestones.map(titleCase),
+    }
+  : null;
+
 const tagFallbacks = {
+  "minecraft:acacia_logs": ["minecraft:acacia_log"],
+  "minecraft:bamboo_blocks": ["minecraft:bamboo_block"],
+  "minecraft:birch_logs": ["minecraft:birch_log"],
+  "minecraft:cherry_logs": ["minecraft:cherry_log"],
   "minecraft:coals": ["minecraft:coal"],
+  "minecraft:copper_tool_materials": ["minecraft:copper_ingot"],
+  "minecraft:crimson_stems": ["minecraft:crimson_stem"],
+  "minecraft:dark_oak_logs": ["minecraft:dark_oak_log"],
+  "minecraft:diamond_tool_materials": ["minecraft:diamond"],
   "minecraft:eggs": ["minecraft:egg"],
   "minecraft:fishes": ["minecraft:cod", "minecraft:salmon"],
+  "minecraft:gold_tool_materials": ["minecraft:gold_ingot"],
+  "minecraft:iron_tool_materials": ["minecraft:iron_ingot"],
+  "minecraft:jungle_logs": ["minecraft:jungle_log"],
   "minecraft:logs": ["minecraft:oak_log"],
+  "minecraft:logs_that_burn": ["minecraft:oak_log"],
+  "minecraft:mangrove_logs": ["minecraft:mangrove_log"],
+  "minecraft:oak_logs": ["minecraft:oak_log"],
+  "minecraft:pale_oak_logs": ["minecraft:pale_oak_log"],
   "minecraft:planks": ["minecraft:oak_planks"],
   "minecraft:sand": ["minecraft:sand", "minecraft:red_sand"],
+  "minecraft:soul_fire_base_blocks": ["minecraft:soul_sand"],
+  "minecraft:spruce_logs": ["minecraft:spruce_log"],
   "minecraft:stone_crafting_materials": ["minecraft:cobblestone"],
+  "minecraft:terracotta": ["minecraft:terracotta"],
+  "minecraft:warped_stems": ["minecraft:warped_stem"],
   "minecraft:wool": ["minecraft:white_wool"],
+  "minecraft:wooden_tool_materials": ["minecraft:oak_planks"],
 };
 
 const tagCache = new Map();
@@ -589,6 +701,12 @@ const materialFamilies = [
   "diorite",
   "andesite",
   "tuff",
+  "limestone",
+  "hellbrick",
+  "mud",
+  "steel",
+  "iron",
+  "dirt",
   "cinnabar",
   "sulfur",
   "stone",
@@ -596,9 +714,19 @@ const materialFamilies = [
 
 function familyFor(recipePath, station, ingredients, category, namespace) {
   if (station === "stonecutting") {
-    return ingredients[0]?.label
-      ? `${ingredients[0].label} family`
-      : "Other stonecutting";
+    const comparable = `${recipePath} ${ingredients[0]?.label || ""}`
+      .toLowerCase()
+      .replaceAll("_", " ");
+    const wood = woodFamilies.find((family) =>
+      comparable.includes(family.replaceAll("_", " ")),
+    );
+    if (wood) return `${titleCase(wood)} wood`;
+    if (comparable.includes("any logs")) return "Mixed wood";
+    const material = materialFamilies.find((family) =>
+      comparable.includes(family),
+    );
+    if (material) return `${titleCase(material)} family`;
+    return "Other stonecutting";
   }
   const comparable = recipePath.toLowerCase();
   const wood = woodFamilies.find((family) => comparable.includes(family));
@@ -654,9 +782,32 @@ function recipeResult(recipe, defaultNamespace) {
 const recipeFiles = walk(path.join(packRoot, "data")).filter(
   (file) => file.endsWith(".json") && file.split(path.sep).includes("recipe"),
 );
+const vanillaRecipeFiles = walk(
+  path.join(vanillaRoot, "data/minecraft/recipe"),
+).filter((file) => file.endsWith(".json"));
+if (!vanillaRecipeFiles.length) {
+  throw new Error(
+    "Minecraft recipe data is required to exclude unchanged vanilla recipes.",
+  );
+}
+const vanillaRecipeFingerprints = new Set(
+  vanillaRecipeFiles.map(readJson).filter(Boolean).map(recipeSemanticSha1),
+);
+const vanillaRecipeNames = new Set(
+  vanillaRecipeFiles.map((file) => path.basename(file, ".json")),
+);
 
 const visibilityManifest = readJson(visibilityManifestFile)?.recipes || {};
 const hasVisibilityManifest = Object.keys(visibilityManifest).length > 0;
+const visibilityByHash = new Map();
+for (const recipe of Object.values(visibilityManifest)) {
+  if (!recipe?.visibility) continue;
+  const fingerprint = recipe.contentSha1 || recipe.sha1;
+  if (!fingerprint) continue;
+  const decisions = visibilityByHash.get(fingerprint) || new Set();
+  decisions.add(recipe.visibility);
+  visibilityByHash.set(fingerprint, decisions);
+}
 
 function visibilityForRecipe(id, file) {
   if (!hasVisibilityManifest) {
@@ -676,6 +827,21 @@ function visibilityForRecipe(id, file) {
       reviewPending: false,
     };
   }
+  const movedRecipeDecisions = visibilityByHash.get(hash);
+  const contentHash = recipeContentSha1(readJson(file));
+  const movedContentDecisions = visibilityByHash.get(contentHash);
+  const inheritedDecision =
+    movedRecipeDecisions?.size === 1
+      ? movedRecipeDecisions
+      : movedContentDecisions?.size === 1
+        ? movedContentDecisions
+        : null;
+  if (inheritedDecision) {
+    return {
+      secret: inheritedDecision.has("secret"),
+      reviewPending: false,
+    };
+  }
   return {
     secret: true,
     reviewPending: true,
@@ -683,6 +849,7 @@ function visibilityForRecipe(id, file) {
 }
 
 const recipes = [];
+const excludedVanillaRecipeIds = [];
 
 for (const file of recipeFiles) {
   const recipe = readJson(file);
@@ -691,6 +858,10 @@ for (const file of recipeFiles) {
   const [, namespace, , ...recipePathParts] = relative.split("/");
   const recipePath = recipePathParts.join("/").replace(/\.json$/, "");
   const id = `${namespace}:${recipePath}`;
+  if (vanillaRecipeFingerprints.has(recipeSemanticSha1(recipe))) {
+    excludedVanillaRecipeIds.push(id);
+    continue;
+  }
   const station = stationFor(recipe, namespace);
   const visibility = visibilityForRecipe(id, file);
   const secret = visibility.secret;
@@ -721,6 +892,9 @@ for (const file of recipeFiles) {
     stationTexture: versionedAssetUrl(stationTextures[station]),
     category: recipe.category || "misc",
     family,
+    changeKind: vanillaRecipeNames.has(path.basename(file, ".json"))
+      ? "changed"
+      : "added",
     secret,
     reviewPending: visibility.reviewPending,
     result,
@@ -875,10 +1049,6 @@ const villageStructures = [
 ].filter((variant) =>
   hasPackFile(`data/minecraft/worldgen/structure/village_${variant}.json`),
 );
-const villagePlacement =
-  readJson(packFile("data/minecraft/worldgen/structure_set/villages.json"))
-    ?.placement || {};
-const villageRegionBlocks = Number(villagePlacement.spacing || 0) * 16;
 const specialFishingTables = [
   "deep_dark",
   "pale_garden",
@@ -903,6 +1073,22 @@ const wardingStoneKey = ensureItem("minecraft:flower_banner_pattern", {
   model: "minecraft:warding_stone",
   name: "Warding Stone",
 });
+const abbeyMapKey = ensureItem("minecraft:map", {
+  model: "minecraft:abbey_map",
+  name: "Abbey Explorer Map",
+});
+const papalOutpostMapKey = ensureItem("minecraft:map", {
+  model: "minecraft:papal_outpost_map",
+  name: "Papal Outpost Explorer Map",
+});
+const compoundBowKey = ensureItem("minecraft:bow", {
+  model: "minecraft:compound_bow",
+  name: "Compound Bow",
+});
+const woodenCrossKey = ensureItem("minecraft:poisonous_potato", {
+  model: "minecraft:wooden_cross",
+  name: "Wooden Cross",
+});
 const divineFragmentKey =
   lootTableItemKey("minecraft:kleis_items/divine_fragment") ||
   ensureItem("minecraft:turtle_scute");
@@ -925,6 +1111,20 @@ function addLocation(sourceFiles, record) {
   if (!detectedSources.length) return;
   locations.push({
     ...record,
+    facts: record.facts || [
+      { label: "Field measure", value: record.metric },
+      {
+        label: "Verified for",
+        value: `Release ${releaseMetadata?.version || "current"}`,
+      },
+    ],
+    sections: record.sections || [
+      {
+        title: "What Matcha changes here",
+        body: record.summary,
+        points: record.findings,
+      },
+    ],
     itemKeys: [...new Set((record.itemKeys || []).filter(Boolean))],
     sourceCount: detectedSources.length,
   });
@@ -949,6 +1149,27 @@ addLocation(
       "Badlands and deserts wash toward dusty grey-green water, while jungle, mangrove, and lush-cave water becomes a clearer bright blue.",
       "The biome names stay familiar. Treat the colour shift as a travel cue: if the whole horizon changes, your local rules may have changed too.",
     ],
+    facts: [
+      { label: "Best clue", value: "Sky, fog, and water colour" },
+      { label: "Changes gameplay", value: "No, this page covers the view" },
+      { label: "Useful beside", value: "Regional fishing" },
+    ],
+    sections: [
+      {
+        title: "Reading the horizon",
+        body: "Matcha gives familiar biomes a stronger colour language. The effect is decorative, but it is also a handy clue that you have crossed into a different fishing or freezing region.",
+        points: [
+          "Snow country leans toward pale blue and carries drifting white flecks.",
+          "Deserts and badlands use dustier water colours.",
+          "Jungles, mangroves, and lush caves use a clearer, brighter blue.",
+        ],
+      },
+      {
+        title: "What the colours do not mean",
+        body: "The palette does not rename the biome or add a status effect by itself. Use it as a travel cue, then check the relevant fishing or hazard entry for the rules that matter.",
+        points: [],
+      },
+    ],
     markerKey: ensureItem("minecraft:filled_map"),
     itemKeys: [
       ensureItem("minecraft:water_bucket"),
@@ -972,6 +1193,34 @@ addLocation(["data/minecraft/loot_table/gameplay/fishing.json"], {
     `Swamps mix their own five-fish set. The Deep Dark, Pale Garden, and Sulfur Caves make up the other ${specialFishingTables.length - 1} special stops, each interrupting the normal catch with something local.`,
     "Common and uncommon names are written plainly. Rare and epic specimens keep their real texture but answer to enchanting-table script here.",
   ],
+  facts: [
+    { label: "Ordinary regions", value: "5 freshwater + 5 saltwater" },
+    {
+      label: "Base roster",
+      value: `${mainFishingPoolSize} species per region`,
+    },
+    { label: "Names protected", value: "Rare and epic catches" },
+  ],
+  sections: [
+    {
+      title: "How the map is divided",
+      body: "Fresh water and salt water each split into five climate bands. Moving from a cold coast to a warm one changes the local roster even when the rod, bait, and weather stay the same.",
+      points: [
+        "Freshwater bands are cold, cool, temperate, hot-dry, and hot-wet.",
+        "Saltwater bands are cold, cool, temperate, warm, and hot.",
+        "Swamps, the Deep Dark, Pale Garden, and Sulfur Caves have special pools layered into the system.",
+      ],
+    },
+    {
+      title: "Keeping discoveries intact",
+      body: "This wiki shows the real fish textures, but it does not print the names of higher-tier catches before you discover them. Their labels stay in enchanting-table script throughout the site.",
+      points: [
+        "Common and uncommon fish are safe to browse by name.",
+        "Fisherman progression expects lower tiers before higher tiers.",
+        "The Angler's Almanac is the in-game checklist for finishing each region.",
+      ],
+    },
+  ],
   markerKey: ensureItem("minecraft:fishing_rod"),
   itemKeys: fish
     .filter((entry) => !entry.obscured)
@@ -992,11 +1241,35 @@ addLocation(
     kicker: "The water bites back",
     summary:
       "Once your head goes under in a frozen biome, this stops being a scenic swim and becomes a five-second problem.",
-    metric: "2 damage · 5 seconds",
+    metric: "½ heart · 5 seconds",
     findings: [
-      "Each check deals 2 points of freeze damage. That is one full heart.",
+      "Each check deals 1 point of freeze damage. That is half a heart.",
       "The same dip applies Slowness V and Darkness for five seconds, which makes the shoreline feel much farther away.",
       "Freezing Protection III on your chest gear cancels the hazard. Creative-mode swimmers are left alone.",
+    ],
+    facts: [
+      { label: "Damage per check", value: "½ heart" },
+      { label: "Effects", value: "Slowness V + Darkness" },
+      { label: "Protection", value: "Freezing Protection III on chest gear" },
+    ],
+    sections: [
+      {
+        title: "When the hazard starts",
+        body: "The check is aimed at submerged survival players in biomes tagged as frozen. Creative players are ignored, and standing beside the water is safe.",
+        points: [
+          "The pack checks for water at head height.",
+          "A successful check deals half a heart of freeze damage.",
+          "Slowness V and Darkness both last five seconds, so getting out is the urgent part.",
+        ],
+      },
+      {
+        title: "Reliable protection",
+        body: "Freezing Protection III on the chest slot cancels the full hazard check. Lower levels do not satisfy the pack's protection rule.",
+        points: [
+          "Put the enchantment on chest gear, not boots or a helmet.",
+          "Carry a boat or blocks when crossing broad frozen water before you have the enchantment.",
+        ],
+      },
     ],
     markerKey: ensureItem("minecraft:packed_ice"),
     itemKeys: [
@@ -1020,12 +1293,38 @@ addLocation(
     kicker: "Pack lunch; the next bell is not nearby",
     summary:
       "A village feels like a rare little event now: one rough, older building style dressed for five climates, with a silence that notices you back.",
-    metric: `${villageRegionBlocks.toLocaleString()} blocks across`,
+    metric: `${villageStructures.length} rebuilt climate variants`,
     findings: [
-      `Village search regions span ${villageRegionBlocks.toLocaleString()} blocks from edge to edge. That is a proper expedition, not a quick jog over the next hill.`,
       `${villageStructures.length} climates use the same beta-style bones: plains, desert, savanna, snowy, and taiga. The silhouette becomes easy to recognise.`,
       "Cross the settlement boundary and the music stops. Spare footsteps, soft breaks, and cave-like sounds make an empty street feel occupied.",
       "Wandering Traders can sell maps to all five village climates for one Obol each, and some offers let you recruit an Asylum Seeker.",
+    ],
+    facts: [
+      {
+        label: "Village styles",
+        value: `${villageStructures.length} climate variants`,
+      },
+      { label: "Map seller", value: "Wandering Trader" },
+      { label: "Map price", value: "1 Obol" },
+    ],
+    sections: [
+      {
+        title: "What a Matcha village is",
+        body: "Matcha replaces the normal village layout with a rough beta-style settlement used across plains, desert, savanna, snowy, and taiga climates.",
+        points: [
+          "The shared silhouette makes distant villages easier to recognise after you have found one.",
+          "Inside the boundary, ordinary music is stopped and environmental sounds take over.",
+          "The atmosphere is deliberate. Footsteps and small sounds may come from the village system rather than another player.",
+        ],
+      },
+      {
+        title: "Finding the climate you want",
+        body: "Wandering Traders can sell a map for each of the five village climates. Each map costs one Obol, which makes targeted travel possible without exposing generation settings.",
+        points: [
+          "Trader offers can also include an Asylum Seeker application.",
+          "Bring the matching map if a specific climate build is the goal.",
+        ],
+      },
     ],
     markerKey: ensureItem("minecraft:bell"),
     itemKeys: [
@@ -1043,6 +1342,249 @@ addLocation(
 
 addLocation(
   [
+    "data/minecraft/worldgen/structure/abbey_overgrown.json",
+    "data/minecraft/worldgen/structure_set/abbey.json",
+    "data/minecraft/loot_table/chests/abbey/tower.json",
+    "data/main/function/abbey/copper_eye_check.mcfunction",
+  ],
+  {
+    id: "abbey",
+    group: "Expeditions",
+    name: "The Abbey",
+    kicker: "A tower above, a dungeon below",
+    summary:
+      "The Abbey is a full expedition with an overgrown tower, underground rooms, target-block mechanisms, archaeology, and rewards that justify a properly packed bag.",
+    metric: "1 tower book · Warding forbidden",
+    findings: [
+      "A journeyman Cartographer can trade an Abbey map for either The Divine Comedy or Paradise Lost.",
+      "The tower chest always selects one of two books: the Quran or the Tanakh.",
+      "Warding Stones placed inside are destroyed immediately, just as they are in Trial Chambers.",
+    ],
+    facts: [
+      { label: "Map seller", value: "Journeyman Cartographer" },
+      { label: "Map payment", value: "The Divine Comedy or Paradise Lost" },
+      { label: "Bring", value: "A projectile weapon" },
+      { label: "Do not bring", value: "A placed Warding Stone" },
+    ],
+    sections: [
+      {
+        title: "Finding an Abbey",
+        body: "The direct route is a Cartographer at villager level three. Two separate offers point to the same structure: one accepts The Divine Comedy and the other accepts Paradise Lost.",
+        points: [
+          "Both offers return the dedicated Abbey Explorer Map.",
+          "The structure starts with an overgrown tower and continues below ground.",
+          "Allays can appear around the structure in groups of one to three.",
+        ],
+      },
+      {
+        title: "How the dungeon behaves",
+        body: "Abbey rooms include combat spaces, puzzle rooms, and boon rooms. Target blocks act as copper eyes, so a projectile can open doors, move grates, or break a linked lantern.",
+        points: [
+          "A bow or another reliable projectile tool belongs in the field kit.",
+          "The room pool includes drawbridges, pitfall halls, baths, water and lava rooms, and checkpoint or vault boons.",
+          "The pack checks target hits and updates the nearby copper-eye mechanism.",
+        ],
+      },
+      {
+        title: "Rewards and warnings",
+        body: "The tower and barracks use their own loot. Archaeology at Abbey graves adds a separate small pool. One recipe can be found somewhere in the structure, but this wiki leaves that discovery sealed.",
+        points: [
+          "Tower gear can include a Compound Bow or an iron sword with Anemos I.",
+          "A tower chest always includes either the Quran or the Tanakh, plus 16 to 32 arrows.",
+          "Grave archaeology can uncover a Wooden Cross, emeralds, bones, a skull, or a clay statue roll.",
+          "Placed Warding Stones are removed with an immediate TNT burst and sculk-soul particles.",
+        ],
+      },
+    ],
+    markerKey: abbeyMapKey,
+    itemKeys: [abbeyMapKey, compoundBowKey, woodenCrossKey, wardingStoneKey],
+    tone: "deep",
+  },
+);
+
+addLocation(
+  [
+    "data/minecraft/worldgen/structure/pillager_outpost.json",
+    "data/minecraft/worldgen/template_pool/pillager_outpost/towers.json",
+    "data/minecraft/villager_trade/cartographer/1/papal_outpost.json",
+    "data/minecraft/loot_table/chests/pillager_outpost.json",
+  ],
+  {
+    id: "papal-outposts",
+    group: "Expeditions",
+    name: "Papal Outposts",
+    kicker: "A familiar landmark after a very strange renovation",
+    summary:
+      "Matcha rebuilds the Pillager Outpost into the Papal Outpost, with ruined tower variants, cobwebbed side structures, its own map art, and a revised supply chest.",
+    metric: "1 emerald map · 2 tower states",
+    findings: [
+      "A novice Cartographer sells the dedicated explorer map for one emerald.",
+      "The tower can appear intact or overgrown, and the surrounding features use cobwebbed or weathered variants.",
+      "The chest always includes arrows and a goat horn, with a chance for two Sentry trims.",
+    ],
+    facts: [
+      { label: "Map seller", value: "Novice Cartographer" },
+      { label: "Map price", value: "1 emerald" },
+      { label: "Guaranteed chest gear", value: "Arrows + goat horn" },
+    ],
+    sections: [
+      {
+        title: "Finding the outpost",
+        body: "You do not need to wait for a high-level villager. A novice Cartographer can sell the Papal Outpost Explorer Map for one emerald.",
+        points: [
+          "The map still targets the structure registered as a Pillager Outpost.",
+          "The dedicated item texture and map name identify it as a Papal Outpost in play.",
+        ],
+      },
+      {
+        title: "Recognising the rebuild",
+        body: "The tower pool contains a standing watchtower and an overgrown version. Side features include cages, tents, logs, targets, and an Allay cage, with cobweb processors used across the set.",
+        points: [
+          "The outpost can look occupied by decay before you account for its actual defenders.",
+          "Allay cages remain one of the possible side structures.",
+        ],
+      },
+      {
+        title: "What is in the chest",
+        body: "The revised outpost chest is compact and predictable enough to plan around, while still leaving one fashion roll to chance.",
+        points: [
+          "Expect 8 to 16 arrows and one regular goat horn.",
+          "Bone, glowstone dust, emeralds, and rabbit hide make up the supply pool.",
+          "The Sentry trim roll can award two templates, or nothing.",
+        ],
+      },
+    ],
+    markerKey: papalOutpostMapKey,
+    itemKeys: [
+      papalOutpostMapKey,
+      ensureItem("minecraft:goat_horn"),
+      ensureItem("minecraft:sentry_armor_trim_smithing_template"),
+      ensureItem("minecraft:arrow"),
+    ],
+    tone: "parchment",
+  },
+);
+
+addLocation(
+  [
+    "data/main/function/mechanic/spawn_mechanic/check_mob_spawn.mcfunction",
+    "data/main/function/mechanic/spawn_mechanic/safe_surface.mcfunction",
+    "data/main/function/mechanic/first_dragon_killed_reward.mcfunction",
+  ],
+  {
+    id: "overworld-surface",
+    group: "Living world",
+    name: "Overworld surface spawning",
+    kicker: "The night changes when the Dragon falls",
+    summary:
+      "Matcha gives the Overworld two surface-spawn rules: one for the early game and a stricter safe-surface state after the first Ender Dragon kill.",
+    metric: "2 world states · 1 Dragon trigger",
+    findings: [
+      "Before the Dragon, exposed non-undead hostiles are removed while undead can still make the open night dangerous.",
+      "After the Dragon, ordinary hostile mobs are removed when they can see the sky or spawn at Y 63 and above.",
+      "Drowned use a lower post-Dragon cutoff at Y 43 and above.",
+    ],
+    facts: [
+      { label: "Early surface", value: "Undead remain outdoors" },
+      { label: "Safe surface trigger", value: "First Ender Dragon kill" },
+      { label: "Post-Dragon cutoff", value: "Y 63, Drowned Y 43" },
+    ],
+    sections: [
+      {
+        title: "Before the Ender Dragon",
+        body: "The open Overworld is not vanilla. Non-undead mundane hostiles are removed when they spawn with a clear view of the sky, while undead can remain. Creepers receive an additional surface check.",
+        points: [
+          "Caves and covered spaces still matter because the sky check no longer applies there.",
+          "Zombies, skeletons, and other undead are the main outdoor threat in this phase.",
+        ],
+      },
+      {
+        title: "After the first Dragon kill",
+        body: "The pack enables its safe-surface state for the world. Mundane hostiles are removed if they can see the sky or appear at Y 63 and above, turning the late-game surface into a much calmer place.",
+        points: [
+          "Underground danger remains. The rule changes where hostiles survive, not whether they exist.",
+          "Drowned are removed if exposed to the sky or at Y 43 and above.",
+          "The Dragon reward also summons a Nether Star at the End's central exit area.",
+        ],
+      },
+    ],
+    markerKey: ensureItem("minecraft:grass_block"),
+    itemKeys: [
+      ensureItem("minecraft:ender_eye"),
+      ensureItem("minecraft:nether_star"),
+      ensureItem("minecraft:torch"),
+    ],
+    tone: "sage",
+  },
+);
+
+addLocation(
+  [
+    "data/main/worldgen/placed_feature/ore_coal_deep_large.json",
+    "data/minecraft/worldgen/placed_feature/ore_emerald.json",
+    "data/minecraft/worldgen/biome/nether_wastes.json",
+    "data/minecraft/worldgen/biome/soul_sand_valley.json",
+  ],
+  {
+    id: "resource-routes",
+    group: "Living world",
+    name: "Ore and resource routes",
+    kicker: "The best mine depends on what you came for",
+    summary:
+      "Release 1.12.1 spreads Silver more widely, rewards deep desert mining with large Coal veins, raises Quartz hunting, and lets Hellspore grow outside fortresses.",
+    metric: "4 routes worth changing camp for",
+    findings: [
+      "Silver can appear in every biome, with better odds in mountains and deeper stone.",
+      "Deep desert layers receive large Coal deposits with veins up to 17 blocks.",
+      "Hellspore patches now generate in Nether Wastes and Soul Sand Valleys.",
+    ],
+    facts: [
+      { label: "Silver", value: "Every biome, better deep and mountainous" },
+      { label: "Deep desert Coal", value: "Veins up to 17 blocks" },
+      { label: "Hellspore", value: "Wastes + Soul Sand Valleys" },
+    ],
+    sections: [
+      {
+        title: "Silver prospecting",
+        body: "Silver is no longer a mountain-only material. Rare deposits can appear in every biome, while mountains and deeper mining remain the better route.",
+        points: [
+          "High-elevation mountain Silver still exists, but is less common than before.",
+          "Depth and mountain terrain improve the practical odds compared with casual surface mining.",
+          "Only newly generated chunks receive the current world-generation changes.",
+        ],
+      },
+      {
+        title: "Coal beneath deserts",
+        body: "Deserts receive a deep Coal feature aimed at the deepslate layers. The configured veins can reach 17 blocks and the placement makes repeated attempts across the lower 64 blocks of the world.",
+        points: [
+          "This route is for bulk fuel, not the quickest first-night Coal.",
+          "Look in newly generated desert chunks at deepslate depth.",
+        ],
+      },
+      {
+        title: "Nether gathering",
+        body: "Quartz is intended to be easier to gather at higher elevations and in larger quantities. Hellspore, Matcha's Nether Wart, also grows in Nether Wastes and Soul Sand Valleys.",
+        points: [
+          "A fortress is no longer the only route to your first Hellspore patch.",
+          "Nether gravel is removed by the current terrain setup.",
+          "These generation changes also require fresh chunks.",
+        ],
+      },
+    ],
+    markerKey: ensureItem("minecraft:prismarine_crystals"),
+    itemKeys: [
+      ensureItem("minecraft:prismarine_crystals"),
+      ensureItem("minecraft:coal"),
+      ensureItem("minecraft:quartz"),
+      ensureItem("minecraft:nether_wart"),
+    ],
+    tone: "nether",
+  },
+);
+
+addLocation(
+  [
+    "data/main/function/mechanic/warding_stone/warding_stone_forbidden.mcfunction",
     "data/main/function/mechanic/warding_stone_forbidden.mcfunction",
     "data/minecraft/loot_table/chests/trial_chambers/reward_unique.json",
     "data/minecraft/loot_table/chests/trial_chambers/reward_ominous_unique.json",
@@ -1059,6 +1601,37 @@ addLocation(
       "Place the stone anywhere inside the structure and it is immediately removed in a TNT burst with a cloud of sculk souls.",
       "Open an ordinary unique reward and a trident is now one of the headline prizes.",
       "Take on the ominous route and its special pool can hand over a Heavy Core or Divine Fragment.",
+    ],
+    facts: [
+      { label: "Warding", value: "Disabled inside" },
+      { label: "Normal unique pool", value: "Trident or Crystal Heart added" },
+      { label: "Ominous unique pool", value: "Heavy Core, Fragment, or Heart" },
+    ],
+    sections: [
+      {
+        title: "The Warding Stone rule",
+        body: "Trial Chambers are one of two structures where a placed Warding Stone is explicitly forbidden. The pack removes the block immediately instead of letting it simplify the encounter.",
+        points: [
+          "The removal creates an instant TNT burst and 100 sculk-soul particles.",
+          "Carry the stone elsewhere, but do not plan a chamber strategy around placing it.",
+        ],
+      },
+      {
+        title: "Normal vault rewards",
+        body: "The normal unique reward pool keeps the familiar trim, banner pattern, and music disc, then adds Matcha's own reasons to return.",
+        points: [
+          "A Trident equipment roll and a Crystal Heart are both in the one-roll unique pool.",
+          "Golden Apples, the Bolt trim, Guster pattern, and Precipice remain possible outcomes.",
+        ],
+      },
+      {
+        title: "Ominous vault rewards",
+        body: "The ominous unique pool is the route to its strongest Matcha additions. It still gives only one result from that pool, so no single vault promises the whole list.",
+        points: [
+          "Heavy Core, Divine Fragment, and Crystal Heart are all possible.",
+          "Enchanted Golden Apple and the Creator music disc remain in the same pool.",
+        ],
+      },
     ],
     markerKey: ensureItem("minecraft:trial_key"),
     itemKeys: [
@@ -1089,6 +1662,30 @@ addLocation(
       "Step into the structure and The End of Dreams milestone records the discovery.",
       "Check corridor chests for three Matcha finds: a Divine Fragment, Crystal Heart, and the Labyrinthine record.",
       "Check the library for two more: a Titanium Compass and The Lesser Key of Solomon.",
+    ],
+    facts: [
+      { label: "Corridor additions", value: "3 named finds" },
+      { label: "Library additions", value: "2 named finds" },
+      { label: "Milestone", value: "The End of Dreams" },
+    ],
+    sections: [
+      {
+        title: "Why search beyond the portal room",
+        body: "Matcha spreads five notable finds across corridor and library chests. A quick portal-only visit can miss most of the structure's new value.",
+        points: [
+          "Corridors can hold a Divine Fragment, Crystal Heart, or the Labyrinthine record.",
+          "Libraries can hold a Titanium Compass or The Lesser Key of Solomon.",
+          "Entering the structure records The End of Dreams milestone.",
+        ],
+      },
+      {
+        title: "A practical search order",
+        body: "Mark the portal room, then search corridors before leaving the library for last. The named additions sit alongside ordinary Stronghold loot, so inspect every chest rather than looking for a special container.",
+        points: [
+          "The Eye trim still appears in Stronghold loot.",
+          "The Labyrinthine record uses an Otherside disc as its base item, so trust the texture and item name.",
+        ],
+      },
     ],
     markerKey: ensureItem("minecraft:ender_eye"),
     itemKeys: [
@@ -1124,6 +1721,38 @@ addLocation(
       "City chests add three special finds to watch for: Topaz, Crystal Hearts, and Divine Fragments.",
       "Deep Dark water has one local catch layered over an ordinary freshwater pool. Its name stays in enchanting-table script.",
     ],
+    facts: [
+      { label: "Map seller", value: "Expert Cartographer" },
+      { label: "Matcha chest finds", value: "Topaz, Heart, Fragment" },
+      { label: "Local fishing", value: "1 protected-name catch" },
+    ],
+    sections: [
+      {
+        title: "Getting there on purpose",
+        body: "An expert Cartographer can sell the explorer map, making the city a planned expedition rather than a lucky cave discovery.",
+        points: [
+          "The map trade appears at villager level four.",
+          "Bring wool and a route out. Matcha improves the rewards, not the Warden's manners.",
+        ],
+      },
+      {
+        title: "City chest additions",
+        body: "Ancient City chests add a one-roll Matcha pool beside their normal contents. The pool contains three special rewards with different weights.",
+        points: [
+          "Topaz is the most heavily weighted of the three additions.",
+          "Crystal Hearts and Divine Fragments share the rarer weight.",
+          "Ward and Silence trims remain in the same special part of the chest table.",
+        ],
+      },
+      {
+        title: "Fishing in the Deep Dark",
+        body: "Deep Dark water adds one local high-tier catch over a normal freshwater route. Its texture remains visible here, but its name stays in enchanting-table script.",
+        points: [
+          "This is a location-specific fishing discovery, not a replacement for the full freshwater pool.",
+          "The wiki will not print the protected name before discovery.",
+        ],
+      },
+    ],
     markerKey: ensureItem("minecraft:echo_shard"),
     itemKeys: [
       topazKey,
@@ -1157,6 +1786,34 @@ addLocation(
       "Buried treasure and shipwrecks are the places to check for special books, tridents, sturdy gear, and Titanium Compasses.",
       "Abandoned Mineshafts can hold one secret. This notebook has suddenly run out of ink.",
     ],
+    facts: [
+      { label: "Landmarks covered", value: "5 familiar ruin types" },
+      { label: "Books to watch for", value: "Avesta + Enoch" },
+      { label: "Mineshaft recipe", value: "Secret" },
+    ],
+    sections: [
+      {
+        title: "Books in small structures",
+        body: "Desert Pyramids and Simple Dungeons now matter to the pack's book trail, so even a familiar chest can advance a much larger collection.",
+        points: [
+          "Desert Pyramid chests can contain The Avesta.",
+          "Simple Dungeon chests can contain The Book of Enoch or a Crystal Heart.",
+        ],
+      },
+      {
+        title: "Coastal treasure routes",
+        body: "Buried treasure and shipwrecks carry several of Matcha's useful travel and equipment rewards beside their normal valuables.",
+        points: [
+          "Watch for Titanium Compasses, Tridents, sturdy equipment, and special books.",
+          "Buried treasure remains useful to Silver progression as well.",
+        ],
+      },
+      {
+        title: "The sealed Mineshaft note",
+        body: "Abandoned Mineshafts can contain a recipe intended to be discovered in play. Its ingredients and result remain secret here.",
+        points: ["The page confirms that a secret exists and stops there."],
+      },
+    ],
     markerKey: ensureItem("minecraft:compass"),
     itemKeys: [
       avestaKey,
@@ -1189,6 +1846,29 @@ addLocation(
       "Gold and damaged diamond gear arrive through the pack’s curated equipment sets instead of a long scatter of separate tool rolls.",
       "Treasure rooms still carry Netherite Upgrade templates, scrap, ingots, and ancient debris beside the new gem.",
     ],
+    facts: [
+      { label: "Ruby cache types", value: `${rubyBastionCaches.length}` },
+      { label: "Ruby locations", value: "Bridge, Stable, Treasure" },
+      { label: "Treasure upgrade", value: "Netherite template guaranteed" },
+    ],
+    sections: [
+      {
+        title: "Where Ruby enters the loot",
+        body: "Ruby is attached to three Bastion chest families. The bridge, Hoglin Stable, and Treasure tables each include a Ruby roll.",
+        points: [
+          "Do not assume every generic Bastion chest uses the same gem pool.",
+          "Treasure rooms are the strongest combined route because Ruby sits beside Netherite materials.",
+        ],
+      },
+      {
+        title: "Treasure-room haul",
+        body: "The Treasure table still pays in ancient debris, scrap, blocks, ingots, and templates. Matcha adds Ruby without removing the main reason players raid the room.",
+        points: [
+          "The Netherite Upgrade template remains a guaranteed one-roll entry.",
+          "Snout trim, Crying Obsidian, Quartz, and Gilded Blackstone remain possible supporting loot.",
+        ],
+      },
+    ],
     markerKey: rubyKey || ensureItem("minecraft:gilded_blackstone"),
     itemKeys: [
       rubyKey,
@@ -1212,6 +1892,30 @@ addLocation(["data/minecraft/loot_table/chests/end_city_treasure.json"], {
     "Iron blocks, loose diamonds, emeralds, gold, iron, and horse armour still fill out the haul.",
     "The Spire armour trim remains in the same city chest, so fashion survives the cleanup.",
   ],
+  facts: [
+    { label: "Gear source", value: "1 shared enchanted diamond pool" },
+    { label: "Trim", value: "Spire" },
+    { label: "Bulk find", value: "Iron blocks" },
+  ],
+  sections: [
+    {
+      title: "How the equipment roll changed",
+      body: "Instead of defining separate enchanted diamond tools and armour throughout the chest table, Matcha points the gear result to one curated diamond equipment pool.",
+      points: [
+        "The change makes the loot definition more consistent, not less valuable.",
+        "Any individual chest can still miss the equipment roll.",
+      ],
+    },
+    {
+      title: "What still comes home",
+      body: "End City treasure remains a broad late-game haul. The pool still includes loose metals and gems, horse armour, building blocks, and the local trim.",
+      points: [
+        "Iron blocks, diamonds, iron, gold, and emeralds remain in the main rolls.",
+        "Golden and diamond horse armour are still possible.",
+        "The Spire trim remains the location's fashion prize.",
+      ],
+    },
+  ],
   markerKey: ensureItem("minecraft:ender_chest"),
   itemKeys: [
     ensureItem("minecraft:diamond_chestplate"),
@@ -1221,7 +1925,25 @@ addLocation(["data/minecraft/loot_table/chests/end_city_treasure.json"], {
   tone: "end",
 });
 
-recipes.sort((a, b) => {
+const untexturedItemKeys = new Set(
+  [...itemMap.values()].filter((item) => !item.texture).map((item) => item.key),
+);
+const brokenPublicRecipe = recipes.find(
+  (recipe) => !recipe.secret && untexturedItemKeys.has(recipe.result.key),
+);
+if (brokenPublicRecipe) {
+  throw new Error(
+    `Public recipe output has no pack or Minecraft texture: ${brokenPublicRecipe.id}`,
+  );
+}
+const quarantinedRecipes = recipes.filter(
+  (recipe) => recipe.secret && untexturedItemKeys.has(recipe.result.key),
+);
+const publishableRecipes = recipes.filter(
+  (recipe) => !untexturedItemKeys.has(recipe.result.key),
+);
+
+publishableRecipes.sort((a, b) => {
   if (a.station !== b.station) {
     return a.stationLabel.localeCompare(b.stationLabel);
   }
@@ -1230,6 +1952,7 @@ recipes.sort((a, b) => {
 });
 
 const items = [...itemMap.values()]
+  .filter((item) => item.texture)
   .map((item) => ({
     ...item,
     outputOf: [...new Set(item.outputOf)],
@@ -1240,7 +1963,7 @@ const items = [...itemMap.values()]
 const stationCounts = Object.fromEntries(
   Object.keys(stationLabels).map((station) => [
     station,
-    recipes.filter((recipe) => recipe.station === station).length,
+    publishableRecipes.filter((recipe) => recipe.station === station).length,
   ]),
 );
 
@@ -1267,7 +1990,7 @@ const output = {
     ...(releaseMetadata || {}),
   },
   stats: {
-    recipeCount: recipes.length,
+    recipeCount: publishableRecipes.length,
     craftingCount: stationCounts.crafting,
     itemCount: items.length,
     advancementCount: advancements.length,
@@ -1275,8 +1998,12 @@ const output = {
     textureCount: walk(
       path.join(publicRoot, "minecraft/assets/minecraft/textures"),
     ).filter((file) => file.endsWith(".png")).length,
-    reviewPendingRecipeCount: recipes.filter((recipe) => recipe.reviewPending)
-      .length,
+    reviewPendingRecipeCount: publishableRecipes.filter(
+      (recipe) => recipe.reviewPending,
+    ).length,
+    excludedVanillaRecipeCount: excludedVanillaRecipeIds.length,
+    quarantinedRecipeCount: quarantinedRecipes.length,
+    untexturedItemCount: untexturedItemKeys.size,
     stationCounts,
   },
   stations: Object.entries(stationLabels)
@@ -1287,15 +2014,20 @@ const output = {
       texture: versionedAssetUrl(stationTextures[id]),
       count: stationCounts[id],
     })),
-  recipes,
+  recipes: publishableRecipes,
   items,
   advancements,
   fish,
   locations,
+  progressionRules,
 };
 
 fs.mkdirSync(path.dirname(outputFile), { recursive: true });
 fs.writeFileSync(outputFile, JSON.stringify(output));
 console.log(
-  `Generated ${recipes.length} recipes, ${items.length} items, and ${advancements.length} advancements.`,
+  `Generated ${publishableRecipes.length} recipes, ${items.length} items, and ${advancements.length} advancements.` +
+    ` Excluded ${excludedVanillaRecipeIds.length} unchanged Minecraft recipes.` +
+    (quarantinedRecipes.length
+      ? ` Quarantined ${quarantinedRecipes.length} hidden recipes with missing source textures.`
+      : ""),
 );
