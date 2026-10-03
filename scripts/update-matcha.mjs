@@ -99,25 +99,25 @@ function unzip(archive, destination, patterns = []) {
   }
 }
 
-function findPackRoot(extractedRoot) {
-  if (
-    fs.existsSync(path.join(extractedRoot, "data")) &&
-    fs.existsSync(path.join(extractedRoot, "assets"))
-  ) {
+export function findPackRoot(
+  extractedRoot,
+  requiredDirectories = ["data", "assets"],
+) {
+  const containsRequiredDirectories = (directory) =>
+    requiredDirectories.every((name) =>
+      fs.existsSync(path.join(directory, name)),
+    );
+  if (containsRequiredDirectories(extractedRoot)) {
     return extractedRoot;
   }
   const nested = fs
     .readdirSync(extractedRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(extractedRoot, entry.name))
-    .find(
-      (directory) =>
-        fs.existsSync(path.join(directory, "data")) &&
-        fs.existsSync(path.join(directory, "assets")),
-    );
+    .find(containsRequiredDirectories);
   if (!nested) {
     throw new Error(
-      "The downloaded Matcha Flavoured archive has no data/assets root.",
+      `The downloaded Matcha Flavoured archive has no ${requiredDirectories.join("/")} root.`,
     );
   }
   return nested;
@@ -222,10 +222,7 @@ function changelogHash(entries) {
     .digest("hex");
 }
 
-async function projectVersions() {
-  const versions = await fetchJson(
-    `${modrinthApi}/project/${projectSlug}/version?include_changelog=true`,
-  );
+export function selectReleasePair(versions) {
   const listed = versions
     .filter((version) => version.status === "listed")
     .sort(
@@ -233,16 +230,48 @@ async function projectVersions() {
         new Date(b.date_published).getTime() -
         new Date(a.date_published).getTime(),
     );
-  if (!listed.length) {
-    throw new Error("Modrinth returned no listed releases.");
+  const latest = listed.find((version) =>
+    version.loaders?.includes("datapack"),
+  );
+  if (!latest) {
+    throw new Error("Modrinth returned no listed datapack releases.");
+  }
+  const listedById = new Map(listed.map((version) => [version.id, version]));
+  const resourcePack = (latest.dependencies || [])
+    .filter((dependency) => dependency.dependency_type === "required")
+    .map((dependency) => listedById.get(dependency.version_id))
+    .find((version) => version?.loaders?.includes("minecraft"));
+  return { latest, listed, resourcePack: resourcePack || null };
+}
+
+async function projectVersions() {
+  const versions = await fetchJson(
+    `${modrinthApi}/project/${projectSlug}/version?include_changelog=true`,
+  );
+  const selected = selectReleasePair(versions);
+  let resourcePack = selected.resourcePack;
+  if (!resourcePack) {
+    for (const dependency of selected.latest.dependencies || []) {
+      if (dependency.dependency_type !== "required" || !dependency.version_id) {
+        continue;
+      }
+      const version = await fetchJson(
+        `${modrinthApi}/version/${dependency.version_id}`,
+      );
+      if (version.loaders?.includes("minecraft")) {
+        resourcePack = version;
+        break;
+      }
+    }
   }
   return {
-    latest: listed[0],
-    changelog: releaseChangelog(listed),
+    latest: selected.latest,
+    resourcePack,
+    changelog: releaseChangelog(selected.listed),
   };
 }
 
-async function ensurePack(version) {
+async function ensurePack(version, requiredDirectories = ["data", "assets"]) {
   const file = primaryFile(version);
   if (!file?.url || !file?.hashes?.sha1) {
     throw new Error("The latest Modrinth release has no verifiable file.");
@@ -265,7 +294,7 @@ async function ensurePack(version) {
   }
   return {
     file,
-    packRoot: findPackRoot(extractedRoot),
+    packRoot: findPackRoot(extractedRoot, requiredDirectories),
   };
 }
 
@@ -285,18 +314,22 @@ async function ensureVisibilityManifest(packRoot, currentData, latestFile) {
         "Recipe privacy cannot be seeded without the current release archive.",
       );
     }
-    const seedPack = await ensurePack({
-      id:
-        currentRelease.versionId || `seed-${currentRelease.sha1.slice(0, 10)}`,
-      files: [
-        {
-          url: currentRelease.downloadUrl,
-          filename: `Matcha_Flavoured-${currentRelease.version}.zip`,
-          primary: true,
-          hashes: { sha1: currentRelease.sha1 },
-        },
-      ],
-    });
+    const seedPack = await ensurePack(
+      {
+        id:
+          currentRelease.versionId ||
+          `seed-${currentRelease.sha1.slice(0, 10)}`,
+        files: [
+          {
+            url: currentRelease.downloadUrl,
+            filename: `Matcha_Flavoured-${currentRelease.version}.zip`,
+            primary: true,
+            hashes: { sha1: currentRelease.sha1 },
+          },
+        ],
+      },
+      ["data"],
+    );
     visibilityPackRoot = seedPack.packRoot;
   }
   const visibilityRecipeFiles = walk(
@@ -433,6 +466,7 @@ function preparePublicAssets(packRoot, vanillaRoot, versionId) {
 
 function runGenerator({
   packRoot,
+  resourcePackRoot,
   releaseMetadataFile,
   stagingPublic,
   stagedData,
@@ -448,6 +482,7 @@ function runGenerator({
       stagingPublic,
       visibilityManifestFile,
       vanillaRoot,
+      resourcePackRoot,
     ],
     { cwd: projectRoot, stdio: "inherit" },
   );
@@ -538,12 +573,22 @@ export async function checkForMatchaUpdate({
 } = {}) {
   fs.mkdirSync(cacheRoot, { recursive: true });
   const currentData = readJson(liveDataFile);
-  const { latest: version, changelog } = await projectVersions();
+  const {
+    latest: version,
+    resourcePack: resourcePackVersion,
+    changelog,
+  } = await projectVersions();
   const file = primaryFile(version);
+  const resourcePackFile = resourcePackVersion
+    ? primaryFile(resourcePackVersion)
+    : null;
   const nextChangelogHash = changelogHash(changelog);
   const changed =
     force ||
     currentData?.release?.sha1 !== file?.hashes?.sha1 ||
+    (resourcePackFile &&
+      currentData?.release?.resourcePack?.sha1 !==
+        resourcePackFile.hashes?.sha1) ||
     currentData?.release?.changelogHash !== nextChangelogHash;
 
   if (!quiet) {
@@ -557,7 +602,13 @@ export async function checkForMatchaUpdate({
     return { changed, updated: false, version };
   }
 
-  const pack = await ensurePack(version);
+  const [pack, resourcePack] = await Promise.all([
+    ensurePack(version, resourcePackVersion ? ["data"] : ["data", "assets"]),
+    resourcePackVersion
+      ? ensurePack(resourcePackVersion, ["assets"])
+      : Promise.resolve(null),
+  ]);
+  const assetPack = resourcePack || pack;
   await ensureVisibilityManifest(pack.packRoot, currentData, pack.file);
   if (!changed) {
     writeJsonAtomic(updaterStateFile, {
@@ -570,7 +621,7 @@ export async function checkForMatchaUpdate({
   const { gameVersion, metadata } = await minecraftVersionFor(version);
   const vanillaRoot = await ensureVanillaAssets(gameVersion, metadata);
   const { stagingPublic, stagingRoot } = preparePublicAssets(
-    pack.packRoot,
+    assetPack.packRoot,
     vanillaRoot,
     version.id,
   );
@@ -587,12 +638,21 @@ export async function checkForMatchaUpdate({
     changelog,
     changelogHash: nextChangelogHash,
     checkedAt: new Date().toISOString(),
+    resourcePack: resourcePackVersion
+      ? {
+          version: resourcePackVersion.version_number,
+          versionId: resourcePackVersion.id,
+          downloadUrl: assetPack.file.url,
+          sha1: assetPack.file.hashes.sha1,
+        }
+      : null,
   };
   const releaseMetadataFile = path.join(stagingRoot, "release.json");
   const stagedData = path.join(stagingRoot, "wiki-data.json");
   writeJsonAtomic(releaseMetadataFile, releaseMetadata);
   runGenerator({
     packRoot: pack.packRoot,
+    resourcePackRoot: assetPack.packRoot,
     releaseMetadataFile,
     stagingPublic,
     stagedData,

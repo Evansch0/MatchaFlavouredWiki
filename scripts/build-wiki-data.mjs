@@ -15,6 +15,7 @@ const publicRoot = process.argv[5] || path.join(projectRoot, "public");
 const visibilityManifestFile =
   process.argv[6] || path.join(projectRoot, "app/data/recipe-visibility.json");
 const vanillaRoot = process.argv[7] || "";
+const resourcePackRoot = process.argv[8] || packRoot;
 const releaseMetadata = releaseMetadataFile
   ? readJson(releaseMetadataFile)
   : null;
@@ -111,7 +112,8 @@ function stripFormatting(value) {
 }
 
 const lang =
-  readJson(path.join(packRoot, "assets/minecraft/lang/en_us.json")) || {};
+  readJson(path.join(resourcePackRoot, "assets/minecraft/lang/en_us.json")) ||
+  {};
 
 function translated(key) {
   return stripFormatting(lang[key] || "");
@@ -458,65 +460,88 @@ function firstScoreValue(relativePath, pattern) {
   return match ? Number(match[1]) : null;
 }
 
-const heartMilestones = [
-  "copper",
-  "iron",
-  "diamond",
-  "nether",
-  "netherite",
-  "electrum",
-  "end",
-].filter((stage) =>
-  hasPackFile(
-    `data/main/function/mechanic/heart_container/decreases/decrease_${stage}_age.mcfunction`,
-  ),
+function firstExistingPackFile(relativePaths) {
+  return relativePaths.find(hasPackFile) || null;
+}
+
+function firstScoreValueFrom(relativePaths, pattern) {
+  const file = firstExistingPackFile(relativePaths);
+  return file ? firstScoreValue(file, pattern) : null;
+}
+
+const advancementFiles = walk(path.join(packRoot, "data")).filter(
+  (file) =>
+    file.endsWith(".json") && file.split(path.sep).includes("advancement"),
 );
-const heartAnnouncementText = readText(
-  packFile(
-    "data/main/function/mechanic/heart_container/decreases/decrease_announcement.mcfunction",
-  ),
-);
-const announcedHeartFloors = [
-  ...heartAnnouncementText.matchAll(/matches (\d+) run tellraw/g),
-].map((match) => Number(match[1]) / 2);
-const progressionRules = hasPackFile(
-  "data/main/function/mechanic/heart_container/detect_death.mcfunction",
-)
+const heartMilestones = advancementFiles
+  .map(readJson)
+  .filter(
+    (advancement) =>
+      advancement?.display &&
+      JSON.stringify(advancement.rewards || {}).includes(
+        "decrease_minimum_hearts",
+      ),
+  )
+  .map((advancement) => textComponent(advancement.display.title))
+  .filter(Boolean);
+const heartFiles = {
+  detectDeath: [
+    "data/matcha/function/mechanics/heart_container/detect_death.mcfunction",
+    "data/main/function/mechanic/heart_container/detect_death.mcfunction",
+  ],
+  hpDown: [
+    "data/matcha/function/mechanics/heart_container/hpdown.mcfunction",
+    "data/main/function/mechanic/heart_container/hpdown.mcfunction",
+  ],
+  playerSetup: [
+    "data/matcha/function/setup/scoreboard/player_setup.mcfunction",
+    "data/matcha/function/setup/update_this_player.mcfunction",
+    "data/main/function/setup/set_minimum_hearts_on_first_load.mcfunction",
+  ],
+  scoreboards: [
+    "data/matcha/function/setup/scoreboard/create_scoreboards.mcfunction",
+    "data/main/function/setup/scoreboard.mcfunction",
+  ],
+  crystalHeart: [
+    "data/matcha/function/mechanics/heart_container/use_crystal_heart.mcfunction",
+    "data/main/function/mechanic/heart_container/clear_heart_container.mcfunction",
+  ],
+};
+const hardMinimum =
+  firstScoreValueFrom(
+    heartFiles.scoreboards,
+    /players set \$Hard minimum_hearts (\d+)/,
+  ) || 6;
+const progressionRules = firstExistingPackFile(heartFiles.detectDeath)
   ? {
       deathHeartLoss:
-        (firstScoreValue(
-          "data/main/function/mechanic/heart_container/hpdown.mcfunction",
+        (firstScoreValueFrom(
+          heartFiles.hpDown,
           /players remove @s Hearts (\d+)/,
         ) || 2) / 2,
       startingMinimumHearts:
-        (firstScoreValue(
-          "data/main/function/setup/set_minimum_hearts_on_first_load.mcfunction",
-          /current_minimum_hearts Hearts (\d+)/,
+        (firstScoreValueFrom(
+          heartFiles.playerSetup,
+          /players set @s minimum_hearts (\d+)/,
         ) || 20) / 2,
-      lowestMinimumHearts: announcedHeartFloors.length
-        ? Math.min(...announcedHeartFloors)
-        : null,
+      lowestMinimumHearts: hardMinimum / 2,
       easyMinimumHearts:
-        (firstScoreValue(
-          "data/main/function/mechanic/heart_container/set_max_hp.mcfunction",
-          /matches 1[^\n]+set @s Hearts (\d+)/,
+        (firstScoreValueFrom(
+          heartFiles.scoreboards,
+          /players set \$Easy minimum_hearts (\d+)/,
         ) || 20) / 2,
       maximumHearts:
-        (firstScoreValue(
-          "data/main/function/setup/scoreboard.mcfunction",
-          /maximum_hearts Hearts (\d+)/,
+        (firstScoreValueFrom(
+          heartFiles.scoreboards,
+          /players set (?:\$Max|maximum_hearts) Hearts (\d+)/,
         ) || 60) / 2,
       crystalHeartGain:
-        (firstScoreValue(
-          "data/main/function/mechanic/heart_container/clear_heart_container.mcfunction",
+        (firstScoreValueFrom(
+          heartFiles.crystalHeart,
           /players add @s Hearts (\d+)/,
         ) || 2) / 2,
-      hardDifficultyAtMinimum:
-        (firstScoreValue(
-          "data/main/function/mechanic/difficulty_scaling/check_difficulty_condition.mcfunction",
-          /current_minimum_hearts Hearts matches (\d+)/,
-        ) || 10) / 2,
-      milestones: heartMilestones.map(titleCase),
+      hardDifficultyAtMinimum: hardMinimum / 2,
+      milestones: [...new Set(heartMilestones)],
     }
   : null;
 
@@ -919,20 +944,24 @@ function advancementIcon(display) {
   return ensureItem(id, { model });
 }
 
-const advancements = walk(path.join(packRoot, "data/main/advancement"))
-  .filter((file) => file.endsWith(".json"))
+const advancements = advancementFiles
   .map((file) => {
     const advancement = readJson(file);
     const display = advancement?.display;
     if (!display || display.hidden === true) return null;
-    const relative = path
-      .relative(path.join(packRoot, "data/main/advancement"), file)
-      .replaceAll(path.sep, "/")
+    const relative = path.relative(path.join(packRoot, "data"), file);
+    const parts = relative.split(path.sep);
+    const resourceIndex = parts.indexOf("advancement");
+    if (resourceIndex < 1) return null;
+    const namespace = parts[0];
+    const advancementPath = parts
+      .slice(resourceIndex + 1)
+      .join("/")
       .replace(/\.json$/, "");
     return {
-      id: `main:${relative}`,
-      section: relative.split("/")[0] || "progression",
-      title: textComponent(display.title) || titleCase(relative),
+      id: `${namespace}:${advancementPath}`,
+      section: advancementPath.split("/")[0] || "progression",
+      title: textComponent(display.title) || titleCase(advancementPath),
       description: textComponent(display.description),
       frame: display.frame || "task",
       iconKey: advancementIcon(display),
@@ -949,11 +978,17 @@ const fishTiers = {
 };
 
 const fish = [];
+const villagerTradeRoots = fs
+  .readdirSync(path.join(packRoot, "data"), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) =>
+    path.join(packRoot, "data", entry.name, "villager_trade", "fisherman"),
+  )
+  .filter((directory) => fs.existsSync(directory));
 for (const [levelText, tier] of Object.entries(fishTiers)) {
   const level = Number(levelText);
-  const tradeFiles = walk(
-    path.join(packRoot, `data/minecraft/villager_trade/fisherman/${level}`),
-  )
+  const tradeFiles = villagerTradeRoots
+    .flatMap((directory) => walk(path.join(directory, String(level))))
     .filter(
       (file) => file.endsWith(".json") && path.basename(file) !== "filler.json",
     )
@@ -1231,6 +1266,8 @@ addLocation(["data/minecraft/loot_table/gameplay/fishing.json"], {
 
 addLocation(
   [
+    "data/matcha/function/environmental/check_freezing_water_conditions.mcfunction",
+    "data/matcha/function/environmental/freezing_water.mcfunction",
     "data/main/function/environmental/check_freezing_water_conditions.mcfunction",
     "data/main/function/environmental/freezing_water.mcfunction",
   ],
@@ -1284,6 +1321,7 @@ addLocation(
   [
     "data/minecraft/worldgen/structure_set/villages.json",
     "data/minecraft/worldgen/template_pool/village_beta/town_centers.json",
+    "data/matcha/function/environmental/village_eerie_sound.mcfunction",
     "data/main/function/environmental/village_eerie_sound.mcfunction",
   ],
   {
@@ -1345,6 +1383,7 @@ addLocation(
     "data/minecraft/worldgen/structure/abbey_overgrown.json",
     "data/minecraft/worldgen/structure_set/abbey.json",
     "data/minecraft/loot_table/chests/abbey/tower.json",
+    "data/matcha/function/abbey/copper_eye_check.mcfunction",
     "data/main/function/abbey/copper_eye_check.mcfunction",
   ],
   {
@@ -1406,6 +1445,7 @@ addLocation(
   [
     "data/minecraft/worldgen/structure/pillager_outpost.json",
     "data/minecraft/worldgen/template_pool/pillager_outpost/towers.json",
+    "data/matcha/villager_trade/cartographer/1/papal_outpost.json",
     "data/minecraft/villager_trade/cartographer/1/papal_outpost.json",
     "data/minecraft/loot_table/chests/pillager_outpost.json",
   ],
@@ -1467,6 +1507,9 @@ addLocation(
 
 addLocation(
   [
+    "data/matcha/function/mechanics/spawn_mechanic/check_mob_spawn.mcfunction",
+    "data/matcha/function/mechanics/spawn_mechanic/safe_surface.mcfunction",
+    "data/matcha/function/mechanics/first_dragon_killed_reward.mcfunction",
     "data/main/function/mechanic/spawn_mechanic/check_mob_spawn.mcfunction",
     "data/main/function/mechanic/spawn_mechanic/safe_surface.mcfunction",
     "data/main/function/mechanic/first_dragon_killed_reward.mcfunction",
@@ -1520,6 +1563,7 @@ addLocation(
 
 addLocation(
   [
+    "data/matcha/worldgen/placed_feature/ore_coal_deep_large.json",
     "data/main/worldgen/placed_feature/ore_coal_deep_large.json",
     "data/minecraft/worldgen/placed_feature/ore_emerald.json",
     "data/minecraft/worldgen/biome/nether_wastes.json",
@@ -1584,6 +1628,7 @@ addLocation(
 
 addLocation(
   [
+    "data/matcha/function/mechanics/warding_stone/forbidden.mcfunction",
     "data/main/function/mechanic/warding_stone/warding_stone_forbidden.mcfunction",
     "data/main/function/mechanic/warding_stone_forbidden.mcfunction",
     "data/minecraft/loot_table/chests/trial_chambers/reward_unique.json",
@@ -1648,6 +1693,7 @@ addLocation(
   [
     "data/minecraft/loot_table/chests/stronghold_corridor.json",
     "data/minecraft/loot_table/chests/stronghold_library.json",
+    "data/matcha/advancement/tutorial/find_stronghold.json",
     "data/main/advancement/tutorial/find_stronghold.json",
   ],
   {
@@ -1706,6 +1752,7 @@ addLocation(
   [
     "data/minecraft/loot_table/chests/ancient_city.json",
     "data/minecraft/loot_table/gameplay/fishing/deep_dark.json",
+    "data/matcha/villager_trade/cartographer/4/ancient_city.json",
     "data/minecraft/villager_trade/cartographer/4/ancient_city.json",
   ],
   {

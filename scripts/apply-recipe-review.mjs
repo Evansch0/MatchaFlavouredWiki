@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { recipeContentSha1 } from "./recipe-fingerprint.mjs";
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -23,21 +24,14 @@ function walk(directory) {
 }
 
 function packRootFrom(candidate) {
-  if (
-    fs.existsSync(path.join(candidate, "data")) &&
-    fs.existsSync(path.join(candidate, "assets"))
-  ) {
+  if (fs.existsSync(path.join(candidate, "data"))) {
     return candidate;
   }
   const nested = fs
     .readdirSync(candidate, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(candidate, entry.name))
-    .find(
-      (directory) =>
-        fs.existsSync(path.join(directory, "data")) &&
-        fs.existsSync(path.join(directory, "assets")),
-    );
+    .find((directory) => fs.existsSync(path.join(directory, "data")));
   if (!nested) throw new Error("No datapack root was found.");
   return nested;
 }
@@ -95,9 +89,11 @@ for (const id of reviewedIds) {
   if (!file) throw new Error(`Reviewed recipe is missing: ${id}`);
   manifest.recipes[id] = {
     sha1: crypto.createHash("sha1").update(fs.readFileSync(file)).digest("hex"),
+    contentSha1: recipeContentSha1(readJson(file)),
     visibility: secretIds.has(id) ? "secret" : "public",
   };
 }
+manifest.schema = 2;
 manifest.lastReviewedVersion = review.version;
 manifest.lastReviewedVersionId = review.versionId;
 manifest.reviewedAt = new Date().toISOString();
