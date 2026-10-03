@@ -1,9 +1,56 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { recipeSemanticSha1 } from "../scripts/recipe-fingerprint.mjs";
+import { findPackRoot, selectReleasePair } from "../scripts/update-matcha.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
+
+test("selects a datapack and its required resource pack", () => {
+  const versions = [
+    {
+      id: "resource",
+      status: "listed",
+      loaders: ["minecraft"],
+      date_published: "2026-10-02T19:20:00Z",
+    },
+    {
+      id: "datapack",
+      status: "listed",
+      loaders: ["datapack"],
+      date_published: "2026-10-02T19:23:00Z",
+      dependencies: [{ version_id: "resource", dependency_type: "required" }],
+    },
+    {
+      id: "mod",
+      status: "listed",
+      loaders: ["fabric"],
+      date_published: "2026-10-02T20:00:00Z",
+    },
+  ];
+
+  const selected = selectReleasePair(versions);
+  assert.equal(selected.latest.id, "datapack");
+  assert.equal(selected.resourcePack.id, "resource");
+});
+
+test("accepts separate datapack and resource-pack archive roots", async () => {
+  const root = await mkdtemp(join(tmpdir(), "matcha-updater-test-"));
+  const datapackRoot = join(root, "datapack");
+  const resourcePackRoot = join(root, "resource-pack");
+  try {
+    await mkdir(join(datapackRoot, "data"), { recursive: true });
+    await mkdir(join(resourcePackRoot, "assets"), { recursive: true });
+
+    assert.equal(findPackRoot(datapackRoot, ["data"]), datapackRoot);
+    assert.equal(findPackRoot(resourcePackRoot, ["assets"]), resourcePackRoot);
+    assert.throws(() => findPackRoot(datapackRoot, ["data", "assets"]));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("recipe comparison ignores presentation-only and ordering differences", () => {
   const vanilla = {
@@ -145,13 +192,13 @@ test("generated data preserves secrets, changelogs, and texture links", async ()
     false,
   );
   assert.equal(
-    data.recipes.find(
-      (recipe) => recipe.id === "main:crafting/acacia_planks_from_acacia_slabs",
+    data.recipes.find((recipe) =>
+      recipe.id.endsWith(":crafting/acacia_planks_from_acacia_slabs"),
     )?.changeKind,
     "added",
   );
   assert.equal(
-    data.recipes.find((recipe) => recipe.id === "main:crafting/arrow")
+    data.recipes.find((recipe) => recipe.id.endsWith(":crafting/arrow"))
       ?.changeKind,
     "changed",
   );
