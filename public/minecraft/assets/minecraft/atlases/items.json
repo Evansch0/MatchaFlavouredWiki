@@ -1,0 +1,22 @@
+{
+  "sources": [
+    {
+      "type": "paletted_permutations",
+      "textures": [
+        "trims/items/leggings_trim",
+        "trims/items/chestplate_trim",
+        "trims/items/helmet_trim",
+        "trims/items/boots_trim"
+      ],
+      "palette_key": "minecraft:trim_base",
+      "permutations": {
+        "electrum": "matcha:trim/electrum",
+        "shakudo": "matcha:trim/shakudo",
+        "hepatizon": "matcha:trim/hepatizon",
+        "electrum_darker": "matcha:trim/electrum",
+        "shakudo_darker": "matcha:trim/shakudo",
+        "hepatizon_darker": "matcha:trim/hepatizon"
+      }
+    }
+  ]
+}

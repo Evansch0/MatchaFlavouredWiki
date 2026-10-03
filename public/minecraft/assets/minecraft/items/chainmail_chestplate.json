@@ -5,30 +5,30 @@
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/chainmail_chestplate_quartz_trim"
+          "model": "minecraft:item/chainmail_chestplate_electrum_trim"
         },
-        "when": "minecraft:quartz"
+        "when": "matcha:electrum"
       },
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/chainmail_chestplate_iron_trim"
+          "model": "minecraft:item/chainmail_chestplate_hepatizon_trim"
         },
-        "when": "minecraft:iron"
+        "when": "matcha:hepatizon"
       },
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/chainmail_chestplate_netherite_trim"
+          "model": "minecraft:item/chainmail_chestplate_shakudo_trim"
         },
-        "when": "minecraft:netherite"
+        "when": "matcha:shakudo"
       },
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/chainmail_chestplate_redstone_trim"
+          "model": "minecraft:item/chainmail_chestplate_amethyst_trim"
         },
-        "when": "minecraft:redstone"
+        "when": "minecraft:amethyst"
       },
       {
         "model": {
@@ -40,9 +40,9 @@
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/chainmail_chestplate_gold_trim"
+          "model": "minecraft:item/chainmail_chestplate_diamond_trim"
         },
-        "when": "minecraft:gold"
+        "when": "minecraft:diamond"
       },
       {
         "model": {
@@ -54,9 +54,16 @@
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/chainmail_chestplate_diamond_trim"
+          "model": "minecraft:item/chainmail_chestplate_gold_trim"
         },
-        "when": "minecraft:diamond"
+        "when": "minecraft:gold"
+      },
+      {
+        "model": {
+          "type": "minecraft:model",
+          "model": "minecraft:item/chainmail_chestplate_iron_trim"
+        },
+        "when": "minecraft:iron"
       },
       {
         "model": {
@@ -68,9 +75,23 @@
       {
         "model": {
           "type": "minecraft:model",
-          "model": "minecraft:item/chainmail_chestplate_amethyst_trim"
+          "model": "minecraft:item/chainmail_chestplate_netherite_trim"
         },
-        "when": "minecraft:amethyst"
+        "when": "minecraft:netherite"
+      },
+      {
+        "model": {
+          "type": "minecraft:model",
+          "model": "minecraft:item/chainmail_chestplate_quartz_trim"
+        },
+        "when": "minecraft:quartz"
+      },
+      {
+        "model": {
+          "type": "minecraft:model",
+          "model": "minecraft:item/chainmail_chestplate_redstone_trim"
+        },
+        "when": "minecraft:redstone"
       },
       {
         "model": {

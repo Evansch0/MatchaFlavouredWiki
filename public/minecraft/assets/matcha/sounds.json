@@ -1,31 +1,4 @@
 {
-	"music.overworld.forest": {
-		"sounds": [
-			{
-				"name": "music/game/abbey",
-				"stream": true,
-				"volume": 0.4
-			}
-		]
-	},
-    "music_disc.labyrinthine": {
-		"sounds": [
-			{
-				"name": "music/game/swamp/labyrinthine",
-				"volume": 1,
-				"stream": true
-			}
-		]
-	},
-	"music_disc.dry_hands": {
-		"sounds": [
-			{
-				"name": "music/game/dry_hands",
-				"volume": 1,
-				"stream": true
-			}
-		]
-	},
 	"custom.false_subwoofer_lullaby": {
 		"sounds": [
 			{
@@ -81,6 +54,7 @@
 		]
 	},
 	"fishing.1_star": {
+		"subtitle": "subtitles.kleispack.fishing.1_star",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/1_star",
@@ -90,6 +64,7 @@
 		]
 	},
 	"fishing.2_star": {
+		"subtitle": "subtitles.kleispack.fishing.2_star",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/2_star",
@@ -99,6 +74,7 @@
 		]
 	},
 	"fishing.3_star": {
+		"subtitle": "subtitles.kleispack.fishing.3_star",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/3_star",
@@ -108,6 +84,7 @@
 		]
 	},
 	"fishing.4_star": {
+		"subtitle": "subtitles.kleispack.fishing.4_star",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/4_star",
@@ -117,6 +94,7 @@
 		]
 	},
 	"fishing.junk": {
+		"subtitle": "subtitles.kleispack.fishing.junk",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/junk",
@@ -126,6 +104,7 @@
 		]
 	},
 	"fishing.treasure": {
+		"subtitle": "subtitles.kleispack.fishing.treasure",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/treasure",
@@ -135,6 +114,7 @@
 		]
 	},
 	"fishing.axolotl": {
+		"subtitle": "subtitles.kleispack.fishing.axolotl",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/axolotl",
@@ -144,6 +124,7 @@
 		]
 	},
 	"fishing.fish_bones": {
+		"subtitle": "subtitles.kleispack.fishing.fish_bones",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/fish_bones",
@@ -153,6 +134,7 @@
 		]
 	},
 	"fishing.enchanted_book": {
+		"subtitle": "subtitles.kleispack.fishing.enchanted_book",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/enchanted_book",
@@ -162,6 +144,7 @@
 		]
 	},
 	"fishing.nautilus_shell": {
+		"subtitle": "subtitles.kleispack.fishing.nautilus_shell",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/nautilus_shell",
@@ -171,6 +154,7 @@
 		]
 	},
 	"fishing.frog": {
+		"subtitle": "subtitles.kleispack.fishing.frog",
 		"sounds": [
 			{
 				"name": "matcha:custom/fishing/frog",
@@ -178,5 +162,35 @@
 				"stream": true
 			}
 		]
+	},
+	"entity.bobwhite.ambient": {
+		"sounds": [
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say1",
+				"volume": 0.6
+			},
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say2",
+				"volume": 0.6
+			},
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say3",
+				"volume": 0.6
+			},
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say4",
+				"volume": 0.6
+			}
+		],
+		"subtitle": "subtitles.kleispack.bobwhite"
+	},
+	"entity.bobwhite.hurt": {
+		"sounds": [
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/hurt",
+				"volume": 1.0
+			}
+		],
+		"subtitle": "subtitles.kleispack.bobwhite"
 	}
 }
