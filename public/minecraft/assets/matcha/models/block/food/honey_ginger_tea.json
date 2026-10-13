@@ -1,8 +1,0 @@
-{
-	"parent": "matcha:block/food/template/tea",
-	"textures": {
-		"0": "matcha:item/models/cup",
-		"1": "matcha:item/models/tea",
-		"particle": "matcha:item/honey_ginger_tea"
-	}
-}

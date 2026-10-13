@@ -1,21 +1,6 @@
 {
 	"model": {
-		"type": "minecraft:select",
-		"cases": [
-			{
-				"model": {
-					"type": "minecraft:model",
-					"model": "matcha:block/food/paneer_makhani"
-				},
-				"when": [
-					"fixed"
-				]
-			}
-		],
-		"fallback": {
-			"type": "minecraft:model",
-			"model": "matcha:item/paneer_makhani"
-		},
-		"property": "minecraft:display_context"
+		"type": "minecraft:model",
+		"model": "matcha:item/paneer_makhani"
 	}
 }

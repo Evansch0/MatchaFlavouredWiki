@@ -1,7 +1,0 @@
-{
-	"parent": "matcha:block/food/template/brownie",
-	"textures": {
-		"0": "matcha:item/models/cookie",
-		"particle": "matcha:item/brownie"
-	}
-}

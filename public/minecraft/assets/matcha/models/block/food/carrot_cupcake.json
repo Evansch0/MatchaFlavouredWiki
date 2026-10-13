@@ -1,8 +1,0 @@
-{
-	"parent": "matcha:block/food/template/cupcake",
-	"textures": {
-		"0": "matcha:item/models/cupcake",
-		"1": "matcha:item/models/carrot",
-		"particle": "matcha:item/carrot_cupcake"
-	}
-}

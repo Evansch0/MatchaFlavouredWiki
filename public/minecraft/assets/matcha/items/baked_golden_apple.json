@@ -1,21 +1,6 @@
 {
 	"model": {
-		"type": "minecraft:select",
-		"cases": [
-			{
-				"model": {
-					"type": "minecraft:model",
-					"model": "matcha:block/food/baked_golden_apple"
-				},
-				"when": [
-					"fixed"
-				]
-			}
-		],
-		"fallback": {
-			"type": "minecraft:model",
-			"model": "matcha:item/baked_golden_apple"
-		},
-		"property": "minecraft:display_context"
+		"type": "minecraft:model",
+		"model": "matcha:item/baked_golden_apple"
 	}
 }

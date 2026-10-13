@@ -1,21 +1,6 @@
 {
 	"model": {
-		"type": "minecraft:select",
-		"cases": [
-			{
-				"model": {
-					"type": "minecraft:model",
-					"model": "matcha:block/food/sweet_berry_jam"
-				},
-				"when": [
-					"fixed"
-				]
-			}
-		],
-		"fallback": {
-			"type": "minecraft:model",
-			"model": "matcha:item/sweet_berry_jam"
-		},
-		"property": "minecraft:display_context"
+		"type": "minecraft:model",
+		"model": "matcha:item/sweet_berry_jam"
 	}
 }

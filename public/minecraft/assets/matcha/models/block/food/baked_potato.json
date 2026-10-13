@@ -1,7 +1,0 @@
-{
-	"parent": "matcha:block/food/template/potato",
-	"textures": {
-		"0": "matcha:item/models/baked_potato",
-		"particle": "item/baked_potato"
-	}
-}
