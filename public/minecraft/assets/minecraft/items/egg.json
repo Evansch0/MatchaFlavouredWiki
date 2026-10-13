@@ -1,6 +1,21 @@
 {
-  "model": {
-    "type": "minecraft:model",
-    "model": "minecraft:item/egg"
-  }
+	"model": {
+		"type": "minecraft:select",
+		"cases": [
+			{
+				"model": {
+					"type": "minecraft:model",
+					"model": "matcha:block/food/egg"
+				},
+				"when": [
+					"fixed"
+				]
+			}
+		],
+		"fallback": {
+			"type": "minecraft:model",
+			"model": "minecraft:item/egg"
+		},
+		"property": "minecraft:display_context"
+	}
 }
