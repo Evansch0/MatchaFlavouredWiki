@@ -1,6 +1,21 @@
 {
-  "model": {
-    "type": "minecraft:model",
-    "model": "minecraft:item/carrot"
-  }
+	"model": {
+		"type": "minecraft:select",
+		"cases": [
+			{
+				"model": {
+					"type": "minecraft:model",
+					"model": "matcha:block/food/carrot"
+				},
+				"when": [
+					"fixed"
+				]
+			}
+		],
+		"fallback": {
+			"type": "minecraft:model",
+			"model": "minecraft:item/carrot"
+		},
+		"property": "minecraft:display_context"
+	}
 }

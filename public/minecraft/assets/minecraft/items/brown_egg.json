@@ -1,6 +1,21 @@
 {
-  "model": {
-    "type": "minecraft:model",
-    "model": "minecraft:item/brown_egg"
-  }
+	"model": {
+		"type": "minecraft:select",
+		"cases": [
+			{
+				"model": {
+					"type": "minecraft:model",
+					"model": "matcha:block/food/brown_egg"
+				},
+				"when": [
+					"fixed"
+				]
+			}
+		],
+		"fallback": {
+			"type": "minecraft:model",
+			"model": "minecraft:item/brown_egg"
+		},
+		"property": "minecraft:display_context"
+	}
 }

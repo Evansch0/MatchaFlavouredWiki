@@ -162,5 +162,35 @@
 				"stream": true
 			}
 		]
+	},
+	"entity.bobwhite.ambient": {
+		"sounds": [
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say1",
+				"volume": 0.6
+			},
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say2",
+				"volume": 0.6
+			},
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say3",
+				"volume": 0.6
+			},
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/say4",
+				"volume": 0.6
+			}
+		],
+		"subtitle": "subtitles.kleispack.bobwhite"
+	},
+	"entity.bobwhite.hurt": {
+		"sounds": [
+			{
+				"name": "matcha:custom/mob/chicken/bobwhite/hurt",
+				"volume": 1.0
+			}
+		],
+		"subtitle": "subtitles.kleispack.bobwhite"
 	}
 }
