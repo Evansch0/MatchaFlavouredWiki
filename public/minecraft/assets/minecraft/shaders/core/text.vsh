@@ -32,7 +32,7 @@ void main() {
         cylindricalVertexDistance = fog_cylindrical_distance(Position);
         vertexColor = Color * sample_lightmap(Sampler2, UV2);
     #else
-        if ((Color.r > 0.501 && Color.r < 0.502 && Color.g == 1.0 && Color.b > 0.125 && Color.b < 0.126 && Color.a == 1.0) || Color == vec4(0.0, 0.0, 0.0, 1.0)) {
+        if (gl_Position.y < -0.5 && ((Color.r > 0.501 && Color.r < 0.502 && Color.g == 1.0 && Color.b > 0.125 && Color.b < 0.126 && Color.a == 1.0) || Color == vec4(0.0, 0.0, 0.0, 1.0))) {
             vertexColor = vec4(0.0);
         }
         else {
